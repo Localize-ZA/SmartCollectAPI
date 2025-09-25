@@ -59,7 +59,19 @@ namespace SmartCollectAPI
             var redisConn = builder.Configuration.GetConnectionString("Redis");
             if (!string.IsNullOrWhiteSpace(redisConn))
             {
-                builder.Services.AddSingleton(StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn));
+                // Use lazy initialization for Redis connection
+                builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+                {
+                    try
+                    {
+                        return ConnectionMultiplexer.Connect(redisConn);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Could not connect to Redis at {redisConn}: {ex.Message}", ex);
+                    }
+                });
+                
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJobQueue, SmartCollectAPI.Services.RedisJobQueue>();
                 // Register background worker dependencies
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IContentDetector, SmartCollectAPI.Services.SimpleContentDetector>();
@@ -67,6 +79,10 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
+            }
+            else
+            {
+                Console.WriteLine("Warning: No Redis connection string found. Running without queue functionality.");
             }
 
             var app = builder.Build();
