@@ -171,7 +171,7 @@ namespace SmartCollectAPI
                     }
 
                     // Validate file size (e.g., max 100MB)
-                    const long maxFileSize = 100 * 1024 * 1024; // 100MB
+                    const long maxFileSize = 100L * 1024 * 1024; // 100MB
                     if (file.Length > maxFileSize)
                     {
                         return Results.BadRequest(new { error = "file too large", details = $"File size cannot exceed {maxFileSize / (1024 * 1024)}MB" });
