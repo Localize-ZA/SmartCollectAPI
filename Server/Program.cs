@@ -2,7 +2,8 @@
 using Microsoft.EntityFrameworkCore;
 using SmartCollectAPI.Data;
 using StackExchange.Redis;
-using Npgsql;
+
+using SmartCollectAPI.Services.Providers;
 
 namespace SmartCollectAPI
 {
@@ -64,6 +65,12 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IStorageService, SmartCollectAPI.Services.LocalStorageService>();
             }
 
+            // Configure provider options
+            builder.Services.Configure<ServicesOptions>(builder.Configuration.GetSection("Services"));
+            builder.Services.Configure<GoogleCloudOptions>(builder.Configuration.GetSection("GoogleCloud"));
+            builder.Services.Configure<GmailOptions>(builder.Configuration.GetSection("Gmail"));
+            builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+
             // CORS for local dev (allow Next.js on :3000)
             builder.Services.AddCors(options =>
             {
@@ -90,11 +97,32 @@ namespace SmartCollectAPI
                     return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
                 });
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJobQueue, SmartCollectAPI.Services.RedisJobQueue>();
-                // Register background worker dependencies
+                
+                // Register basic services (still needed for structured data parsing)
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IContentDetector, SmartCollectAPI.Services.SimpleContentDetector>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJsonParser, SmartCollectAPI.Services.JsonParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
+
+                // Register Google Cloud providers
+                builder.Services.AddScoped<GoogleDocAiParser>();
+                builder.Services.AddScoped<GoogleVisionOcrService>();
+                builder.Services.AddScoped<GoogleEntityExtractionService>();
+                builder.Services.AddScoped<VertexEmbeddingService>();
+                builder.Services.AddScoped<GmailNotificationService>();
+
+                // Register OSS fallback providers
+                builder.Services.AddScoped<SimplePdfParser>();
+                builder.Services.AddScoped<SimpleEmbeddingService>();
+                builder.Services.AddScoped<SmtpNotificationService>();
+
+                // Register provider factory
+                builder.Services.AddScoped<IProviderFactory, ProviderFactory>();
+
+                // Register enhanced processing pipeline
+                builder.Services.AddScoped<SmartCollectAPI.Services.IDocumentProcessingPipeline, SmartCollectAPI.Services.DocumentProcessingPipeline>();
+                
+                // Register background worker
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
             }
 
