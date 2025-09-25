@@ -140,7 +140,7 @@ public class IngestWorker : BackgroundService
                             continue;
                         }
 
-                        // Legacy repository insert removed; using EF context directly
+                        // Note: legacy repository insert removed; using EF context directly
 
                         await using var fs = File.OpenRead(absPath);
                         var mime = await _detector.DetectMimeAsync(fs, job.MimeType, stoppingToken);
@@ -202,7 +202,7 @@ public class IngestWorker : BackgroundService
                         var outFile = Path.Combine(outDir, job.JobId + ".json");
                         await File.WriteAllTextAsync(outFile, JsonSerializer.Serialize(canonical, new JsonSerializerOptions { WriteIndented = true }), stoppingToken);
 
-                        // Legacy repository updates removed; EF context already persisted changes
+                        // Note: legacy repository updates removed; EF context already persisted changes
 
                         await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
                     }

@@ -75,10 +75,6 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
             }
-            else
-            {
-                Console.WriteLine("Warning: No Redis connection string found. Running without queue functionality.");
-            }
 
 
             var app = builder.Build();
