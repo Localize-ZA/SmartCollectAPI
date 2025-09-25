@@ -103,12 +103,40 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 EmbeddingVector: embeddingResult.Success ? embeddingResult.Embedding : null
             );
         }
-        catch (Exception ex)
+        catch (FileNotFoundException ex)
         {
-            _logger.LogError(ex, "Error processing document for job {JobId}", job.JobId);
+            _logger.LogError(ex, "Source file not found for job {JobId}: {FilePath}", job.JobId, job.SourceUri);
             return new PipelineResult(
                 Success: false,
-                ErrorMessage: ex.Message,
+                ErrorMessage: $"Source file not found: {job.SourceUri}",
+                CanonicalDocument: null
+            );
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogError(ex, "Access denied to source file for job {JobId}: {FilePath}", job.JobId, job.SourceUri);
+            return new PipelineResult(
+                Success: false,
+                ErrorMessage: "Access denied to source file",
+                CanonicalDocument: null
+            );
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.LogWarning(ex, "Document processing cancelled for job {JobId}", job.JobId);
+            return new PipelineResult(
+                Success: false,
+                ErrorMessage: "Processing was cancelled",
+                CanonicalDocument: null
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error processing document for job {JobId}. Exception type: {ExceptionType}", 
+                job.JobId, ex.GetType().Name);
+            return new PipelineResult(
+                Success: false,
+                ErrorMessage: $"An unexpected error occurred during processing: {ex.Message}",
                 CanonicalDocument: null
             );
         }

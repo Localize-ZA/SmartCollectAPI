@@ -4,6 +4,7 @@ using SmartCollectAPI.Data;
 using StackExchange.Redis;
 using Npgsql;
 using SmartCollectAPI.Services.Providers;
+using SmartCollectAPI.Middleware;
 
 namespace SmartCollectAPI
 {
@@ -130,6 +131,9 @@ namespace SmartCollectAPI
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
+            // Add global exception handling middleware first
+            app.UseMiddleware<GlobalExceptionMiddleware>();
+
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
@@ -150,45 +154,83 @@ namespace SmartCollectAPI
 
             app.MapPost("/api/ingest", async (HttpRequest request, SmartCollectAPI.Services.IStorageService storage, SmartCollectAPI.Services.IJobQueue? queue, CancellationToken ct) =>
             {
-                if (!request.HasFormContentType)
+                try
                 {
-                    return Results.BadRequest(new { error = "multipart/form-data required" });
-                }
+                    if (!request.HasFormContentType)
+                    {
+                        return Results.BadRequest(new { error = "multipart/form-data required", details = "Request must use multipart/form-data content type" });
+                    }
 
-                var form = await request.ReadFormAsync(ct);
-                var file = form.Files.GetFile("file");
-                var notify = form["notify_email"].FirstOrDefault();
-                if (file is null || file.Length == 0)
+                    var form = await request.ReadFormAsync(ct);
+                    var file = form.Files.GetFile("file");
+                    var notify = form["notify_email"].FirstOrDefault();
+                    
+                    if (file is null || file.Length == 0)
+                    {
+                        return Results.BadRequest(new { error = "file is required", details = "A valid file must be provided in the 'file' field" });
+                    }
+
+                    // Validate file size (e.g., max 100MB)
+                    const long maxFileSize = 100 * 1024 * 1024; // 100MB
+                    if (file.Length > maxFileSize)
+                    {
+                        return Results.BadRequest(new { error = "file too large", details = $"File size cannot exceed {maxFileSize / (1024 * 1024)}MB" });
+                    }
+
+                    // Validate email format if provided
+                    if (!string.IsNullOrWhiteSpace(notify) && !IsValidEmail(notify))
+                    {
+                        return Results.BadRequest(new { error = "invalid email format", details = "The notify_email field must contain a valid email address" });
+                    }
+
+                    await using var stream = file.OpenReadStream();
+                    var sha = await SmartCollectAPI.Services.Hashing.ComputeSha256Async(stream, resetPosition: true, ct);
+                    var savedPath = await storage.SaveAsync(stream, file.FileName, ct);
+                    var mime = file.ContentType ?? "application/octet-stream";
+
+                    var job = new SmartCollectAPI.Models.JobEnvelope(
+                        JobId: Guid.NewGuid(),
+                        SourceUri: savedPath,
+                        MimeType: mime,
+                        Sha256: sha,
+                        ReceivedAt: DateTimeOffset.UtcNow,
+                        Origin: "web",
+                        NotifyEmail: string.IsNullOrWhiteSpace(notify) ? null : notify
+                    );
+
+                    if (queue is not null)
+                    {
+                        await queue.EnqueueAsync(job, ct);
+                    }
+
+                    return Results.Accepted($"/api/jobs/{job.JobId}", new { job_id = job.JobId, sha256 = sha, source_uri = savedPath });
+                }
+                catch (Exception ex) when (ex is OperationCanceledException)
                 {
-                    return Results.BadRequest(new { error = "file is required" });
+                    return Results.BadRequest(new { error = "request cancelled", details = "The request was cancelled before completion" });
                 }
-
-                await using var stream = file.OpenReadStream();
-                var sha = await SmartCollectAPI.Services.Hashing.ComputeSha256Async(stream, resetPosition: true, ct);
-                var savedPath = await storage.SaveAsync(stream, file.FileName, ct);
-                var mime = file.ContentType ?? "application/octet-stream";
-
-                var job = new SmartCollectAPI.Models.JobEnvelope(
-                    JobId: Guid.NewGuid(),
-                    SourceUri: savedPath,
-                    MimeType: mime,
-                    Sha256: sha,
-                    ReceivedAt: DateTimeOffset.UtcNow,
-                    Origin: "web",
-                    NotifyEmail: string.IsNullOrWhiteSpace(notify) ? null : notify
-                );
-
-                if (queue is not null)
+                catch (Exception ex) when (ex is IOException)
                 {
-                    await queue.EnqueueAsync(job, ct);
+                    return Results.Json(new { error = "file processing error", details = "An error occurred while processing the uploaded file" }, statusCode: 500);
                 }
-
-                return Results.Accepted($"/api/jobs/{job.JobId}", new { job_id = job.JobId, sha256 = sha, source_uri = savedPath });
             })
             .DisableAntiforgery()
             .WithOpenApi();
 
             app.Run();
+        }
+
+        private static bool IsValidEmail(string email)
+        {
+            try
+            {
+                var addr = new System.Net.Mail.MailAddress(email);
+                return addr.Address == email;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

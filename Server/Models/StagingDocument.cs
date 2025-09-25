@@ -12,6 +12,7 @@ public class StagingDocument
     public string? Sha256 { get; set; }
     public JsonNode? RawMetadata { get; set; }
     public JsonNode? Normalized { get; set; }
+    public JsonNode? ErrorInfo { get; set; } // Store structured error information
     public string Status { get; set; } = "pending"; // pending, processing, failed, done
     public int Attempts { get; set; } = 0;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

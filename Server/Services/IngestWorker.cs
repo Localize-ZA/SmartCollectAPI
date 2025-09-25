@@ -183,7 +183,9 @@ public class IngestWorker : BackgroundService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed processing entry {Id}", e.Id);
+                        var errorCategory = CategorizeException(ex);
+                        _logger.LogError(ex, "Failed processing entry {Id}. Error category: {ErrorCategory}, Exception type: {ExceptionType}", 
+                            e.Id, errorCategory, ex.GetType().Name);
                         
                         // Check retry count from Redis message
                         var fields = e.Values.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
@@ -205,12 +207,21 @@ public class IngestWorker : BackgroundService
                                 {
                                     existingStagingDoc.Status = retryCount >= MaxRetryAttempts ? "failed" : "pending";
                                     existingStagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
+                                    // Store structured error information
+                                    existingStagingDoc.ErrorInfo = JsonSerializer.SerializeToNode(new
+                                    {
+                                        error_category = errorCategory,
+                                        exception_type = ex.GetType().Name,
+                                        message = ex.Message,
+                                        retry_count = retryCount,
+                                        timestamp = DateTimeOffset.UtcNow
+                                    });
                                     await dbContext.SaveChangesAsync(stoppingToken);
                                 }
                             }
                             catch (Exception dbEx)
                             {
-                                _logger.LogError(dbEx, "Failed to update staging document status");
+                                _logger.LogError(dbEx, "Failed to update staging document status after error");
                             }
                         }
                         
@@ -218,13 +229,13 @@ public class IngestWorker : BackgroundService
                         if (retryCount >= MaxRetryAttempts)
                         {
                             await _jobQueue.MoveToDeadLetterQueueAsync(StreamName, group, e.Id.ToString(), 
-                                $"Max retries ({MaxRetryAttempts}) exceeded: {ex.Message}", stoppingToken);
+                                $"Max retries ({MaxRetryAttempts}) exceeded. Category: {errorCategory}, Error: {ex.Message}", stoppingToken);
                         }
                         else
                         {
                             // Don't ack; it can be retried later
-                            _logger.LogInformation("Job {MessageId} will be retried. Current retry count: {RetryCount}", 
-                                e.Id, retryCount);
+                            _logger.LogInformation("Job {MessageId} will be retried. Current retry count: {RetryCount}, Error category: {ErrorCategory}", 
+                                e.Id, retryCount, errorCategory);
                         }
                     }
                 }
@@ -263,5 +274,23 @@ public class IngestWorker : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to save processed document backup for {Id}", canonical.Id);
         }
+    }
+
+    private static string CategorizeException(Exception ex)
+    {
+        return ex switch
+        {
+            FileNotFoundException => "file_not_found",
+            UnauthorizedAccessException => "access_denied",
+            IOException => "io_error",
+            TimeoutException => "timeout",
+            TaskCanceledException => "request_timeout",
+            OperationCanceledException => "cancelled",
+            InvalidOperationException => "invalid_operation",
+            ArgumentException => "invalid_argument",
+            OutOfMemoryException => "out_of_memory",
+            HttpRequestException => "network_error",
+            _ => "unexpected_error"
+        };
     }
 }
