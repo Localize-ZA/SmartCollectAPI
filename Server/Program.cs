@@ -4,6 +4,8 @@ using StackExchange.Redis;
 
 using SmartCollectAPI.Services.Providers;
 using Npgsql;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace SmartCollectAPI
 {
@@ -25,8 +27,44 @@ namespace SmartCollectAPI
             {
                 connectionString = builder.Configuration.GetConnectionString("Postgres");
             }
+            Console.WriteLine($"[DEBUG] Using connection string: {connectionString}");
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
+                // Ensure the target database exists before building the pooled data source.
+                // This prevents "database does not exist" errors when the app starts before
+                // docker-compose or the init script has created the schema.
+                var connectionBuilder = new NpgsqlConnectionStringBuilder(connectionString);
+                var targetDatabase = connectionBuilder.Database;
+
+                if (!string.IsNullOrWhiteSpace(targetDatabase))
+                {
+                    try
+                    {
+                        var adminBuilder = new NpgsqlConnectionStringBuilder(connectionString)
+                        {
+                            Database = "postgres"
+                        };
+
+                        using var adminConnection = new NpgsqlConnection(adminBuilder.ConnectionString);
+                        adminConnection.Open();
+
+                        using var existsCmd = new NpgsqlCommand("SELECT 1 FROM pg_database WHERE datname = @name", adminConnection);
+                        existsCmd.Parameters.AddWithValue("@name", targetDatabase);
+
+                        var exists = existsCmd.ExecuteScalar();
+                        if (exists is null)
+                        {
+                            var createSql = $"CREATE DATABASE \"{targetDatabase.Replace("\"", "\"\"")}\"";
+                            using var createCmd = new NpgsqlCommand(createSql, adminConnection);
+                            createCmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[DatabaseBootstrap] Failed to ensure database '{targetDatabase}' exists: {ex.Message}");
+                    }
+                }
+
                 // Build a shared NpgsqlDataSource and enable dynamic JSON serialization so System.Text.Json.Nodes
                 // (JsonNode/JsonObject) can be mapped to PostgreSQL jsonb columns.
                 var dsBuilder = new NpgsqlDataSourceBuilder(connectionString);
@@ -128,6 +166,48 @@ namespace SmartCollectAPI
 
 
             var app = builder.Build();
+
+            // Ensure required PostgreSQL extensions and tables exist.
+            using (var scope = app.Services.CreateScope())
+            {
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+                var dataSource = scope.ServiceProvider.GetService<NpgsqlDataSource>();
+                if (dataSource is not null)
+                {
+                    try
+                    {
+                        using var connection = dataSource.OpenConnection();
+
+                        using (var cmd = connection.CreateCommand())
+                        {
+                            cmd.CommandText = "CREATE EXTENSION IF NOT EXISTS vector;";
+                            cmd.ExecuteNonQuery();
+                        }
+
+                        using (var cmd = connection.CreateCommand())
+                        {
+                            cmd.CommandText = "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";";
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to ensure PostgreSQL extensions exist.");
+                    }
+                }
+
+                try
+                {
+                    var db = scope.ServiceProvider.GetRequiredService<SmartCollectDbContext>();
+                    db.Database.EnsureCreated();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to ensure database schema is created.");
+                    throw;
+                }
+            }
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
