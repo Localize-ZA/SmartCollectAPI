@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartCollectAPI.Data;
 using StackExchange.Redis;
+
 using SmartCollectAPI.Services.Providers;
 
 namespace SmartCollectAPI
@@ -18,17 +19,38 @@ namespace SmartCollectAPI
             builder.Services.AddOpenApi();
 
             // Add Entity Framework with PostgreSQL
+            // Resolve connection string: prefer DefaultConnection, fall back to "Postgres" (present in appsettings.Development.json)
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                connectionString = builder.Configuration.GetConnectionString("Postgres");
+            }
             if (!string.IsNullOrWhiteSpace(connectionString))
             {
-                builder.Services.AddDbContext<SmartCollectDbContext>(options =>
-                    options.UseNpgsql(connectionString, npgsqlOptions =>
-                        npgsqlOptions.UseVector()));
+                // Build a shared NpgsqlDataSource and enable dynamic JSON serialization so System.Text.Json.Nodes
+                // (JsonNode/JsonObject) can be mapped to PostgreSQL jsonb columns.
+                var dsBuilder = new NpgsqlDataSourceBuilder(connectionString);
+                dsBuilder.EnableDynamicJson();
+                var dataSource = dsBuilder.Build();
+                builder.Services.AddSingleton(dataSource);
+
+                // Wire EF Core to use the shared data source and pgvector
+                builder.Services.AddDbContext<SmartCollectDbContext>((sp, options) =>
+                {
+                    var ds = sp.GetRequiredService<NpgsqlDataSource>();
+                    options.UseNpgsql(ds, npgsqlOptions => npgsqlOptions.UseVector());
+                });
             }
 
             // Add health checks
+            // Health check: connect to the default 'postgres' database to avoid false negatives
+            // if the app database is temporarily missing during setup.
+            var hcBuilder = new Npgsql.NpgsqlConnectionStringBuilder(connectionString ?? string.Empty)
+            {
+                Database = "postgres"
+            };
             builder.Services.AddHealthChecks()
-                .AddNpgSql(connectionString ?? string.Empty, name: "postgres")
+                .AddNpgSql(hcBuilder.ToString(), name: "postgres")
                 .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? string.Empty, name: "redis");
 
             // Configuration: Storage and Redis
