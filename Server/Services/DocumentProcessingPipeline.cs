@@ -350,7 +350,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
             <p>The complete processing results are attached as JSON.</p>
             
-            <p><em>Processed by SmartCollectAPI using Google Cloud services</em></p>
+            <p><em>Processed by SmartCollectAPI using open source services with Google Document AI</em></p>
         </body>
         </html>";
     }

@@ -106,7 +106,6 @@ namespace SmartCollectAPI
             // Configure provider options
             builder.Services.Configure<ServicesOptions>(builder.Configuration.GetSection("Services"));
             builder.Services.Configure<GoogleCloudOptions>(builder.Configuration.GetSection("GoogleCloud"));
-            builder.Services.Configure<GmailOptions>(builder.Configuration.GetSection("Gmail"));
             builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
 
             // CORS for local dev (allow Next.js on :3000)
@@ -142,17 +141,15 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
 
-                // Register Google Cloud providers
+                // Register Google Document AI (only Google service we keep)
                 builder.Services.AddScoped<GoogleDocAiParser>();
-                builder.Services.AddScoped<GoogleVisionOcrService>();
-                builder.Services.AddScoped<GoogleEntityExtractionService>();
-                builder.Services.AddScoped<VertexEmbeddingService>();
-                builder.Services.AddScoped<GmailNotificationService>();
 
-                // Register OSS fallback providers
+                // Register OSS providers (default for all other services)
                 builder.Services.AddScoped<SimplePdfParser>();
                 builder.Services.AddScoped<SimpleEmbeddingService>();
                 builder.Services.AddScoped<SmtpNotificationService>();
+                builder.Services.AddScoped<SimpleOcrService>();
+                builder.Services.AddScoped<SimpleEntityExtractionService>();
 
                 // Register provider factory
                 builder.Services.AddScoped<IProviderFactory, ProviderFactory>();

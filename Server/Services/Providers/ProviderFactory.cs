@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace SmartCollectAPI.Services.Providers;
 
@@ -16,69 +17,56 @@ public class ProviderFactory : IProviderFactory
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ServicesOptions _options;
+    private readonly ILogger<ProviderFactory> _logger;
 
-    public ProviderFactory(IServiceProvider serviceProvider, IOptions<ServicesOptions> options)
+    public ProviderFactory(IServiceProvider serviceProvider, IOptions<ServicesOptions> options, ILogger<ProviderFactory> logger)
     {
         _serviceProvider = serviceProvider;
         _options = options.Value;
+        _logger = logger;
     }
 
     public IAdvancedDocumentParser GetDocumentParser()
     {
+        _logger.LogInformation($"ProviderFactory: Parser config = '{_options.Parser}', using provider: {_options.Parser?.ToUpperInvariant() ?? "DEFAULT"}");
         return _options.Parser?.ToUpperInvariant() switch
         {
             "GOOGLE" => _serviceProvider.GetRequiredService<GoogleDocAiParser>(),
             "OSS" => _serviceProvider.GetRequiredService<SimplePdfParser>(),
-            _ => _serviceProvider.GetRequiredService<GoogleDocAiParser>() // Default to Google
+            _ => _serviceProvider.GetRequiredService<SimplePdfParser>() // Default to OSS for now
         };
     }
 
     public IOcrService GetOcrService()
     {
-        return _options.OCR?.ToUpperInvariant() switch
-        {
-            "GOOGLE" => _serviceProvider.GetRequiredService<GoogleVisionOcrService>(),
-            "OSS" => throw new NotImplementedException("OSS OCR service not implemented yet"),
-            _ => _serviceProvider.GetRequiredService<GoogleVisionOcrService>() // Default to Google
-        };
+        // Only OSS OCR service is supported
+        return _serviceProvider.GetRequiredService<SimpleOcrService>();
     }
 
     public IEmbeddingService GetEmbeddingService()
     {
-        return _options.Embeddings?.ToUpperInvariant() switch
-        {
-            "GOOGLE" => _serviceProvider.GetRequiredService<VertexEmbeddingService>(),
-            "OSS" => _serviceProvider.GetRequiredService<SimpleEmbeddingService>(),
-            _ => _serviceProvider.GetRequiredService<VertexEmbeddingService>() // Default to Google
-        };
+        // Only OSS embedding service is supported
+        return _serviceProvider.GetRequiredService<SimpleEmbeddingService>();
     }
 
     public IEntityExtractionService GetEntityExtractionService()
     {
-        return _options.EntityExtraction?.ToUpperInvariant() switch
-        {
-            "GOOGLE" => _serviceProvider.GetRequiredService<GoogleEntityExtractionService>(),
-            "OSS" => throw new NotImplementedException("OSS entity extraction service not implemented yet"),
-            _ => _serviceProvider.GetRequiredService<GoogleEntityExtractionService>() // Default to Google
-        };
+        // Only OSS entity extraction service is supported
+        return _serviceProvider.GetRequiredService<SimpleEntityExtractionService>();
     }
 
     public INotificationService GetNotificationService()
     {
-        return _options.Notifications?.ToUpperInvariant() switch
-        {
-            "GOOGLE" => _serviceProvider.GetRequiredService<GmailNotificationService>(),
-            "OSS" => _serviceProvider.GetRequiredService<SmtpNotificationService>(),
-            _ => _serviceProvider.GetRequiredService<GmailNotificationService>() // Default to Google
-        };
+        // Only OSS notification service is supported
+        return _serviceProvider.GetRequiredService<SmtpNotificationService>();
     }
 }
 
 public class ServicesOptions
 {
-    public string Parser { get; set; } = "Google";
-    public string OCR { get; set; } = "Google";
-    public string Embeddings { get; set; } = "Google";
-    public string EntityExtraction { get; set; } = "Google";
-    public string Notifications { get; set; } = "Google";
+    public string Parser { get; set; } = "Google";  // Keep Google Document AI only
+    public string OCR { get; set; } = "OSS";
+    public string Embeddings { get; set; } = "OSS";
+    public string EntityExtraction { get; set; } = "OSS";
+    public string Notifications { get; set; } = "OSS";
 }
