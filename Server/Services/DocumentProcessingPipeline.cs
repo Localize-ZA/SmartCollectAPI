@@ -258,7 +258,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
         return new CanonicalDocument
         {
-            Id = Guid.NewGuid(),
+            Id = job.Id,
             SourceUri = job.SourceUri,
             IngestTs = job.ReceivedAt,
             Mime = job.MimeType,
