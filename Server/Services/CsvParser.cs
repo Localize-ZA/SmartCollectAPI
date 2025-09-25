@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Text.Json.Nodes;
-using CsvHelper;
 
 namespace SmartCollectAPI.Services;
 
@@ -9,17 +7,22 @@ public class CsvParser : ICsvParser
     public async Task<JsonNode?> ParseAsync(Stream s, CancellationToken ct = default)
     {
         using var reader = new StreamReader(s);
-        using var csv = new CsvReader(reader, System.Globalization.CultureInfo.InvariantCulture);
-        var records = new JsonArray();
-        await foreach (var record in csv.GetRecordsAsync<dynamic>(ct))
+        var headerLine = await reader.ReadLineAsync();
+        if (headerLine == null) return null;
+        var headers = headerLine.Split(',');
+        var rows = new JsonArray();
+        string? line;
+        while ((line = await reader.ReadLineAsync()) != null)
         {
+            var cols = line.Split(',');
             var obj = new JsonObject();
-            foreach (var kvp in (IDictionary<string, object>)record)
+            for (int i = 0; i < headers.Length && i < cols.Length; i++)
             {
-                obj[kvp.Key] = kvp.Value?.ToString();
+                obj[headers[i]] = cols[i];
             }
-            records.Add(obj);
+            rows.Add(obj);
+            if (ct.IsCancellationRequested) break;
         }
-        return records;
+        return rows;
     }
 }

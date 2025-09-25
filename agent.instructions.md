@@ -429,6 +429,166 @@ CREATE TABLE documents (
 - **Google Cloud Services:** Document AI, Vision AI, Natural Language AI, Vertex AI embeddings, Gmail API.
 - **Observability:** Serilog + Cloud Logging; optional Prometheus export for metrics.
 
+## Architecture Addenda — Providers, Export/Retry, Enrichment, Schema
+
+This section refines the blueprint with (1) a provider strategy that balances Google-first with OSS fallbacks, (2) an export layer with REST + GraphQL and a non-blocking retry model, (3) enrichment workers that run post-ingestion, and (4) a stronger relational schema.
+
+### 1) Google Reliance vs Reality (Pluggable Providers)
+
+Principle: Every Google API call must sit behind a small interface with a local/OSS fallback. In “Hackathon” mode we default to Google providers; in “OSS” mode we run locally with sidecars or libraries.
+
+Provider matrix (Google-first with OSS fallback):
+
+- Document parsing
+  - Google: Document AI (PDF/Word layout + OCR)
+  - Fallbacks: Apache Tika Server, PyMuPDF/PdfPig, Apache POI for Office
+- OCR (images or when doc text is image-based)
+  - Google: Vision API (OCR, labels)
+  - Fallback: Tesseract (native or container sidecar)
+- Embeddings
+  - Google: Vertex AI embeddings
+  - Fallback: HuggingFace SentenceTransformers (e.g., all-MiniLM-L6-v2) via local HTTP server or hosted inference
+- Notifications
+  - Google: Gmail API
+  - Fallback: SMTP or generic webhook exporter
+
+Interfaces (example names; keep minimal contracts):
+- IAdvancedDocumentParser → GoogleDocAiParser | TikaParser/PdfParser
+- IOcrService → GoogleVisionOcrService | TesseractOcrService
+- IEmbeddingService → VertexEmbeddingService | HFSentenceTransformerService
+- INotificationService → GmailNotificationService | SmtpNotificationService/WebhookNotificationService
+
+Configuration (select providers by environment):
+
+```jsonc
+// appsettings.json
+{
+  "Services": {
+    "Parser": "Google",       // Google | OSS
+    "OCR": "Google",          // Google | OSS
+    "Embeddings": "Google",   // Google | OSS
+    "Notifications": "Google"  // Google | OSS
+  }
+}
+```
+
+Notes:
+- For the hackathon demo: default to Google across the board; the OSS providers remain wired and switchable without code changes.
+- Log which provider handled each stage for traceability.
+
+Google usage map (where Google tools are applied):
+- Parsing of PDFs/Office → Document AI
+- OCR of images/embedded scans → Vision API
+- Entity extraction → Natural Language API
+- Embeddings → Vertex AI embeddings
+- Export/notification → Gmail API
+
+### 2) Export Layer (REST + GraphQL + Retry without bottlenecks)
+
+Surface:
+- REST: Great for external integrations (stable endpoints)
+- GraphQL: Great for dashboards and selective data fetching (only what consumers need)
+
+Retry model (no tight loops, no bottlenecks):
+- On export failure: set status=failed_export, compute exponential backoff, enqueue into export retry schedule with retry_at.
+- Scheduling store:
+  - Redis sorted set: key `export:retry`, score = retry_at (epoch ms)
+  - Or a Postgres table with an index on retry_at
+- Worker behavior:
+  - Polls only jobs with retry_at <= now (ZRANGEBYSCORE or SELECT ... WHERE retry_at <= now())
+  - On failure: increment attempt, compute backoff, re-enqueue
+  - After N attempts: move to DLQ (`export:dlq` in Redis or a dedicated table) for manual intervention
+- Isolation: Failed items never block healthy ones; no global locks; no retry-until-success loops.
+
+Observability:
+- Metrics: success/failure counts, DLQ size, average retry age
+- Logs: export job id, attempt, chosen provider, error summary
+
+GraphQL note:
+- Add a GraphQL endpoint (e.g., Hot Chocolate) at `/graphql` with types for Document, Entity, Chunk, Provenance to power the dashboard.
+
+### 3) Enrichment Workers (async, post-ingestion)
+
+Purpose: Link and normalize entities after ingestion without blocking the ingest/export pipeline.
+
+Flow:
+- Trigger: document normalized and stored
+- Extract entities from canonical JSON (or NL output)
+- Resolve/normalize against domain registries (business, government, user accounts)
+- Upsert entities and write `document_entities` linking rows (with salience/mentions/spans)
+- Mark link_status on the document (resolved | needs_review) for ambiguous items
+
+Properties:
+- Idempotent and resumable; safe to re-run
+- Backed by a small queue or DB poll of `link_status = 'pending'`
+- Can feed `supply_chain_links` when relationships are identified
+
+### 4) Schema Redesign (recommended)
+
+Core relational tables to replace the too-flat staging/documents approach while preserving a staging view during transition:
+
+```sql
+CREATE TABLE documents (
+  id UUID PRIMARY KEY,
+  source_uri TEXT NOT NULL,
+  domain_type TEXT NOT NULL,  -- 'government', 'business', 'user'
+  mime TEXT,
+  sha256 TEXT UNIQUE,
+  canonical JSONB NOT NULL,
+  ingest_ts TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE document_chunks (
+  id UUID PRIMARY KEY,
+  document_id UUID REFERENCES documents(id),
+  chunk_index INT,
+  text TEXT,
+  embedding VECTOR(1536)
+);
+
+CREATE TABLE entities (
+  id UUID PRIMARY KEY,
+  name TEXT,
+  type TEXT, -- PERSON, ORG, LOCATION, PRODUCT, etc.
+  normalized_name TEXT,
+  external_ref TEXT -- e.g. gov registry ID, company reg no.
+);
+
+CREATE TABLE document_entities (
+  document_id UUID REFERENCES documents(id),
+  entity_id UUID REFERENCES entities(id),
+  salience FLOAT,
+  mention_text TEXT,
+  span JSONB,
+  PRIMARY KEY (document_id, entity_id)
+);
+
+CREATE TABLE supply_chain_links (
+  id UUID PRIMARY KEY,
+  from_entity UUID REFERENCES entities(id),
+  to_entity UUID REFERENCES entities(id),
+  relationship TEXT, -- supplier, regulator, complainant, etc.
+  source_document UUID REFERENCES documents(id)
+);
+
+CREATE TABLE provenance (
+  id UUID PRIMARY KEY,
+  document_id UUID REFERENCES documents(id),
+  source_type TEXT,  -- 'api', 'upload', 'scrape'
+  owner TEXT,
+  pipeline_version TEXT,
+  notes TEXT
+);
+```
+
+Rationale:
+- Domain separation: `documents.domain_type` keeps government/business/user clean while still joinable
+- Entity relationships: `document_entities` + `supply_chain_links` provide relational power
+- Unlinked data: enrichment writers update `document_entities`; unresolved items remain visible for manual review
+- Chunk embeddings: first-class support via `document_chunks`
+- Lineage: `provenance` records origins and pipeline versions
+
 ## Six-Hour Execution Plan
 1. **Hour 1 — Ingestion Foundation**
    - Scaffold Minimal API, health endpoint, file upload handler, storage helper.

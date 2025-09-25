@@ -31,9 +31,9 @@ public class IngestWorker : BackgroundService
         IContentDetector detector,
         IJsonParser jsonParser,
         IXmlParser xmlParser,
-        ICsvParser csvParser,
-        IServiceScopeFactory scopeFactory,
-        IJobQueue jobQueue)
+    ICsvParser csvParser,
+    IServiceScopeFactory scopeFactory,
+    IJobQueue jobQueue)
     {
         _logger = logger;
         _redis = redis;
@@ -43,6 +43,7 @@ public class IngestWorker : BackgroundService
         _csvParser = csvParser;
         _scopeFactory = scopeFactory;
         _jobQueue = jobQueue as RedisJobQueue ?? throw new ArgumentException("JobQueue must be RedisJobQueue");
+        
 
         // Assume LocalStorageService default path 'uploads' when local. For now derive processed beside it.
         _uploadsRoot = Path.Combine(AppContext.BaseDirectory, "uploads");
@@ -139,6 +140,8 @@ public class IngestWorker : BackgroundService
                             continue;
                         }
 
+                        // Legacy repository insert removed; using EF context directly
+
                         await using var fs = File.OpenRead(absPath);
                         var mime = await _detector.DetectMimeAsync(fs, job.MimeType, stoppingToken);
                         fs.Position = 0;
@@ -199,6 +202,8 @@ public class IngestWorker : BackgroundService
                         var outFile = Path.Combine(outDir, job.JobId + ".json");
                         await File.WriteAllTextAsync(outFile, JsonSerializer.Serialize(canonical, new JsonSerializerOptions { WriteIndented = true }), stoppingToken);
 
+                        // Legacy repository updates removed; EF context already persisted changes
+
                         await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
                     }
                     catch (Exception ex)
@@ -237,7 +242,7 @@ public class IngestWorker : BackgroundService
                         // If max retries exceeded, move to DLQ
                         if (retryCount >= MaxRetryAttempts)
                         {
-                            await _jobQueue.MoveToDeadLetterQueueAsync(StreamName, group, e.Id, 
+                            await _jobQueue.MoveToDeadLetterQueueAsync(StreamName, group, e.Id.ToString(), 
                                 $"Max retries ({MaxRetryAttempts}) exceeded: {ex.Message}", stoppingToken);
                         }
                         else
@@ -249,10 +254,19 @@ public class IngestWorker : BackgroundService
                     }
                 }
             }
+            catch (TaskCanceledException)
+            {
+                // Graceful shutdown
+                break;
+            }
             catch (Exception ex)
             {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 _logger.LogError(ex, "Worker loop error");
-                await Task.Delay(2000, stoppingToken);
+                try { await Task.Delay(2000, stoppingToken); } catch (TaskCanceledException) { break; }
             }
         }
     }
