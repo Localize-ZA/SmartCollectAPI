@@ -224,7 +224,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 Metadata: new Dictionary<string, object>
                 {
                     ["parser"] = "Structured",
-                    ["structured_data"] = structuredData!,
+                    ["structured_data"] = structuredData is not null ? structuredData : null,
                     ["is_structured"] = true
                 }
             );
