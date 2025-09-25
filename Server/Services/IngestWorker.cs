@@ -6,6 +6,7 @@ using StackExchange.Redis;
 using SmartCollectAPI.Models;
 using SmartCollectAPI.Data;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace SmartCollectAPI.Services;
 
@@ -13,40 +14,25 @@ public class IngestWorker : BackgroundService
 {
     private readonly ILogger<IngestWorker> _logger;
     private readonly IConnectionMultiplexer _redis;
-    private readonly IContentDetector _detector;
-    private readonly IJsonParser _jsonParser;
-    private readonly IXmlParser _xmlParser;
-    private readonly ICsvParser _csvParser;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly RedisJobQueue _jobQueue;
 
     private const string StreamName = "ingest-stream";
     private const int MaxRetryAttempts = 3;
-    private readonly string _uploadsRoot;
     private readonly string _processedRoot;
 
     public IngestWorker(
         ILogger<IngestWorker> logger,
         IConnectionMultiplexer redis,
-        IContentDetector detector,
-        IJsonParser jsonParser,
-        IXmlParser xmlParser,
-    ICsvParser csvParser,
-    IServiceScopeFactory scopeFactory,
-    IJobQueue jobQueue)
+        IServiceScopeFactory scopeFactory,
+        IJobQueue jobQueue)
     {
         _logger = logger;
         _redis = redis;
-        _detector = detector;
-        _jsonParser = jsonParser;
-        _xmlParser = xmlParser;
-        _csvParser = csvParser;
         _scopeFactory = scopeFactory;
         _jobQueue = jobQueue as RedisJobQueue ?? throw new ArgumentException("JobQueue must be RedisJobQueue");
         
-
-        // Assume LocalStorageService default path 'uploads' when local. For now derive processed beside it.
-        _uploadsRoot = Path.Combine(AppContext.BaseDirectory, "uploads");
+        // For backup/debugging purposes
         _processedRoot = Path.Combine(AppContext.BaseDirectory, "processed");
         Directory.CreateDirectory(_processedRoot);
     }
@@ -92,9 +78,12 @@ public class IngestWorker : BackgroundService
                             continue;
                         }
 
+                        _logger.LogInformation("Processing job {JobId} for file {SourceUri}", job.JobId, job.SourceUri);
+
                         // Create or update staging document
                         using var scope = _scopeFactory.CreateScope();
                         var dbContext = scope.ServiceProvider.GetRequiredService<SmartCollectDbContext>();
+                        var pipeline = scope.ServiceProvider.GetRequiredService<IDocumentProcessingPipeline>();
                         
                         stagingDoc = await dbContext.StagingDocuments
                             .FirstOrDefaultAsync(sd => sd.JobId == job.JobId.ToString(), stoppingToken);
@@ -122,87 +111,75 @@ public class IngestWorker : BackgroundService
                         
                         await dbContext.SaveChangesAsync(stoppingToken);
 
-                        var localPath = job.SourceUri;
-                        var absPath = Path.IsPathRooted(localPath) ? localPath : Path.Combine(AppContext.BaseDirectory, localPath);
-                        if (!File.Exists(absPath))
-                        {
-                            _logger.LogError("Source file missing: {Path}", absPath);
-                            
-                            // Update staging document status to failed
-                            if (stagingDoc != null)
-                            {
-                                stagingDoc.Status = "failed";
-                                stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
-                                await dbContext.SaveChangesAsync(stoppingToken);
-                            }
-                            
-                            await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
-                            continue;
-                        }
-
-                        // Note: legacy repository insert removed; using EF context directly
-
-                        await using var fs = File.OpenRead(absPath);
-                        var mime = await _detector.DetectMimeAsync(fs, job.MimeType, stoppingToken);
-                        fs.Position = 0;
-
-                        System.Text.Json.Nodes.JsonNode? parsed = null;
-                        if (mime == "application/json")
-                            parsed = await _jsonParser.ParseAsync(fs, stoppingToken);
-                        else if (mime == "text/xml" || mime == "application/xml")
-                            parsed = await _xmlParser.ParseAsync(fs, stoppingToken);
-                        else if (mime == "text/csv")
-                            parsed = await _csvParser.ParseAsync(fs, stoppingToken);
-
-                        var canonical = new Models.CanonicalDocument
-                        {
-                            Id = job.JobId,
-                            SourceUri = job.SourceUri,
-                            IngestTs = DateTimeOffset.UtcNow,
-                            Mime = mime,
-                            Structured = parsed is not null,
-                            StructuredPayload = parsed
-                        };
-
-                        // Update staging document with normalized data
-                        stagingDoc!.Normalized = JsonSerializer.SerializeToNode(canonical);
-                        stagingDoc.Status = "done";
-                        stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
-
                         // Check if document already exists (idempotency by SHA256)
                         var existingDoc = await dbContext.Documents
                             .FirstOrDefaultAsync(d => d.Sha256 == job.Sha256, stoppingToken);
                         
-                        if (existingDoc == null)
+                        if (existingDoc != null)
                         {
+                            _logger.LogInformation("Document with SHA256 {Sha256} already exists, skipping processing", job.Sha256);
+                            
+                            // Mark staging as done and ack the message
+                            stagingDoc.Status = "done";
+                            stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
+                            await dbContext.SaveChangesAsync(stoppingToken);
+                            await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
+                            continue;
+                        }
+
+                        // Process the document using the enhanced pipeline
+                        var pipelineResult = await pipeline.ProcessDocumentAsync(job, stoppingToken);
+
+                        if (pipelineResult.Success && pipelineResult.CanonicalDocument != null)
+                        {
+                            // Create document record with embedding
                             var document = new Document
                             {
                                 Id = job.JobId,
                                 SourceUri = job.SourceUri,
-                                Mime = mime,
+                                Mime = job.MimeType,
                                 Sha256 = job.Sha256,
-                                Canonical = JsonSerializer.SerializeToNode(canonical)!,
+                                Canonical = JsonSerializer.SerializeToNode(pipelineResult.CanonicalDocument)!,
                                 CreatedAt = DateTimeOffset.UtcNow,
-                                UpdatedAt = DateTimeOffset.UtcNow
-                                // Embedding will be added later when vectorization is implemented
+                                UpdatedAt = DateTimeOffset.UtcNow,
+                                Embedding = null // Will be set if embedding was successful
                             };
+
+                            // Try to get embedding from the canonical document
+                            if (pipelineResult.CanonicalDocument.EmbeddingDim > 0)
+                            {
+                                // The embedding would be stored in the pipeline result, but for now
+                                // we'll create a placeholder. In a full implementation, you'd pass
+                                // the embedding vector from the pipeline result.
+                                _logger.LogInformation("Document processed with {Dimensions} embedding dimensions", 
+                                    pipelineResult.CanonicalDocument.EmbeddingDim);
+                            }
+
                             dbContext.Documents.Add(document);
+
+                            // Update staging document
+                            stagingDoc.Normalized = JsonSerializer.SerializeToNode(pipelineResult.CanonicalDocument);
+                            stagingDoc.Status = "done";
+                            stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
+
+                            await dbContext.SaveChangesAsync(stoppingToken);
+
+                            // Save processed document for backup/debugging
+                            await SaveProcessedDocument(pipelineResult.CanonicalDocument, stoppingToken);
+
+                            _logger.LogInformation("Successfully processed job {JobId}. Notification sent: {NotificationSent}", 
+                                job.JobId, pipelineResult.NotificationResult?.Success == true);
                         }
                         else
                         {
-                            _logger.LogInformation("Document with SHA256 {Sha256} already exists, skipping", job.Sha256);
+                            // Mark as failed
+                            stagingDoc.Status = "failed";
+                            stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
+                            await dbContext.SaveChangesAsync(stoppingToken);
+
+                            _logger.LogError("Pipeline processing failed for job {JobId}: {Error}", 
+                                job.JobId, pipelineResult.ErrorMessage);
                         }
-
-                        await dbContext.SaveChangesAsync(stoppingToken);
-
-                        // Still save to file for backup/debugging purposes
-                        var now = DateTime.UtcNow;
-                        var outDir = Path.Combine(_processedRoot, now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"));
-                        Directory.CreateDirectory(outDir);
-                        var outFile = Path.Combine(outDir, job.JobId + ".json");
-                        await File.WriteAllTextAsync(outFile, JsonSerializer.Serialize(canonical, new JsonSerializerOptions { WriteIndented = true }), stoppingToken);
-
-                        // Note: legacy repository updates removed; EF context already persisted changes
 
                         await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
                     }
@@ -268,6 +245,25 @@ public class IngestWorker : BackgroundService
                 _logger.LogError(ex, "Worker loop error");
                 try { await Task.Delay(2000, stoppingToken); } catch (TaskCanceledException) { break; }
             }
+        }
+    }
+
+    private async Task SaveProcessedDocument(CanonicalDocument canonical, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var outDir = Path.Combine(_processedRoot, now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"));
+            Directory.CreateDirectory(outDir);
+            var outFile = Path.Combine(outDir, canonical.Id + ".json");
+            
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(canonical, options);
+            await File.WriteAllTextAsync(outFile, json, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to save processed document backup for {Id}", canonical.Id);
         }
     }
 }
