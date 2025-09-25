@@ -62,10 +62,14 @@ public class GoogleDocAiParser : IAdvancedDocumentParser
             };
 
             // Create the process request
+            if (string.IsNullOrWhiteSpace(_options.ProcessorId))
+            {
+                throw new InvalidOperationException("Google Document AI ProcessorId is not configured. Please set a valid ProcessorId in GoogleCloudOptions.");
+            }
             var processorName = ProcessorName.FromProjectLocationProcessor(
                 _options.ProjectId, 
                 _options.Location ?? "us", 
-                _options.ProcessorId ?? "default");
+                _options.ProcessorId);
 
             var request = new ProcessRequest
             {
