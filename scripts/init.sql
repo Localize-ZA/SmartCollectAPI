@@ -1,4 +1,19 @@
 -- Initialize database with pgvector extension and base schema
+-- Create user and database if running with postgres superuser
+DO
+$do$
+BEGIN
+   IF NOT EXISTS (SELECT FROM pg_catalog.pg_user WHERE usename = 'smartcollect_user') THEN
+      CREATE USER smartcollect_user WITH PASSWORD 'smartcollect_password';
+   END IF;
+   
+   -- Grant necessary permissions
+   GRANT ALL PRIVILEGES ON DATABASE smartcollect TO smartcollect_user;
+   ALTER USER smartcollect_user CREATEDB;
+END
+$do$;
+
+-- Create extensions
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -38,3 +53,7 @@ CREATE INDEX idx_documents_created_at ON documents(created_at);
 
 -- Create vector similarity index (using HNSW for approximate nearest neighbor)
 CREATE INDEX idx_documents_embedding ON documents USING hnsw (embedding vector_cosine_ops);
+
+-- Grant permissions on tables
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO smartcollect_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO smartcollect_user;
