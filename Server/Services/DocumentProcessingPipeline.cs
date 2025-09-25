@@ -381,7 +381,17 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         var textToEmbed = extractedText;
         if (metadata != null)
         {
-            var context = string.Join(" ", metadata.Where(kv => kv.Value is string).Select(kv => $"{kv.Key}: {kv.Value}"));
+            var sb = new System.Text.StringBuilder();
+            foreach (var kv in metadata)
+            {
+                if (kv.Value is string)
+                {
+                    if (sb.Length > 0)
+                        sb.Append(' ');
+                    sb.Append($"{kv.Key}: {kv.Value}");
+                }
+            }
+            var context = sb.ToString();
             if (!string.IsNullOrWhiteSpace(context))
             {
                 textToEmbed = $"{context}\n\n{extractedText}";
