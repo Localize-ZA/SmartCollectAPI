@@ -139,12 +139,7 @@ public class IngestWorker : BackgroundService
                             continue;
                         }
 
-                        // Insert into staging as 'processing' if repo configured
-                        if (_stagingRepo is not null)
-                        {
-                            try { await _stagingRepo.InsertAsync(job.JobId.ToString(), job.SourceUri, job.MimeType, job.Sha256, null, "processing", stoppingToken); }
-                            catch (Exception ex) { _logger.LogWarning(ex, "Staging insert failed (may already exist) for job {JobId}", job.JobId); }
-                        }
+                        // Note: legacy repository insert removed; using EF context directly
 
                         await using var fs = File.OpenRead(absPath);
                         var mime = await _detector.DetectMimeAsync(fs, job.MimeType, stoppingToken);
@@ -206,18 +201,7 @@ public class IngestWorker : BackgroundService
                         var outFile = Path.Combine(outDir, job.JobId + ".json");
                         await File.WriteAllTextAsync(outFile, JsonSerializer.Serialize(canonical, new JsonSerializerOptions { WriteIndented = true }), stoppingToken);
 
-                        // Upsert into documents if repo configured
-                        if (_documentsRepo is not null)
-                        {
-                            try { await _documentsRepo.UpsertAsync(job.SourceUri, mime, job.Sha256, canonical.StructuredPayload ?? new System.Text.Json.Nodes.JsonObject(), stoppingToken); }
-                            catch (Exception ex) { _logger.LogError(ex, "Documents upsert failed for job {JobId}", job.JobId); }
-                        }
-
-                        if (_stagingRepo is not null)
-                        {
-                            try { await _stagingRepo.UpdateStatusAsync(job.JobId.ToString(), "done", stoppingToken); }
-                            catch (Exception ex) { _logger.LogWarning(ex, "Staging status update failed for job {JobId}", job.JobId); }
-                        }
+                        // Note: legacy repository updates removed; EF context already persisted changes
 
                         await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
                     }
