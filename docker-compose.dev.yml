@@ -23,8 +23,8 @@ services:
     container_name: smartcollect-postgres
     environment:
       POSTGRES_DB: smartcollect
-      POSTGRES_USER: smartcollect_user
-      POSTGRES_PASSWORD: smartcollect_password
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
