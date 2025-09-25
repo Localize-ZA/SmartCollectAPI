@@ -10,8 +10,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Google Cloud packages will be added back when provider integration is implemented -->
-  <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.9" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.2.1" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.1.0" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="Google.Apis.Gmail.v1" Version="1.70.0.3833" />
+    <PackageReference Include="Google.Cloud.AIPlatform.V1" Version="3.46.0" />
+    <PackageReference Include="Google.Cloud.DocumentAI.V1" Version="3.21.0" />
+    <PackageReference Include="Google.Cloud.Language.V1" Version="3.7.0" />
+    <PackageReference Include="Google.Cloud.Storage.V1" Version="4.13.0" />
+    <PackageReference Include="Google.Cloud.Vision.V1" Version="3.7.0" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.9">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

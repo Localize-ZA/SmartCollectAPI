@@ -1,4 +1,8 @@
 
+using Microsoft.EntityFrameworkCore;
+using SmartCollectAPI.Data;
+using StackExchange.Redis;
+
 namespace SmartCollectAPI
 {
     public class Program
@@ -8,10 +12,23 @@ namespace SmartCollectAPI
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-
             builder.Services.AddControllers();
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
+
+            // Add Entity Framework with PostgreSQL
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+            if (!string.IsNullOrWhiteSpace(connectionString))
+            {
+                builder.Services.AddDbContext<SmartCollectDbContext>(options =>
+                    options.UseNpgsql(connectionString, npgsqlOptions =>
+                        npgsqlOptions.UseVector()));
+            }
+
+            // Add health checks
+            builder.Services.AddHealthChecks()
+                .AddNpgSql(connectionString ?? string.Empty, name: "postgres")
+                .AddRedis(builder.Configuration.GetConnectionString("Redis") ?? string.Empty, name: "redis");
 
             // Configuration: Storage and Redis
             var storageSection = builder.Configuration.GetSection("Storage");
@@ -42,6 +59,19 @@ namespace SmartCollectAPI
             var redisConn = builder.Configuration.GetConnectionString("Redis");
             if (!string.IsNullOrWhiteSpace(redisConn))
             {
+                // Use lazy initialization for Redis connection
+                builder.Services.AddSingleton<IConnectionMultiplexer>(serviceProvider =>
+                {
+                    try
+                    {
+                        return ConnectionMultiplexer.Connect(redisConn);
+                    }
+                    catch (Exception ex)
+                    {
+                        throw new InvalidOperationException($"Could not connect to Redis at {redisConn}: {ex.Message}", ex);
+                    }
+                });
+                
                 builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(_ =>
                 {
                     var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConn);
@@ -59,17 +89,6 @@ namespace SmartCollectAPI
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
             }
 
-            // Postgres DataSource and repositories
-            var pgConn = builder.Configuration.GetConnectionString("Postgres");
-            if (!string.IsNullOrWhiteSpace(pgConn))
-            {
-                var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(pgConn);
-                var dataSource = dataSourceBuilder.Build();
-                builder.Services.AddSingleton(dataSource);
-                builder.Services.AddSingleton<SmartCollectAPI.Services.Repositories.IStagingRepository, SmartCollectAPI.Services.Repositories.StagingRepository>();
-                builder.Services.AddSingleton<SmartCollectAPI.Services.Repositories.IDocumentsRepository, SmartCollectAPI.Services.Repositories.DocumentsRepository>();
-            }
-
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -80,15 +99,15 @@ namespace SmartCollectAPI
             }
 
             app.UseHttpsRedirection();
-
             app.UseAuthorization();
-
-
             app.MapControllers();
 
+            // Add health checks endpoint
+            app.MapHealthChecks("/health");
+
             // Minimal API endpoints for Hour 1
-            app.MapGet("/health", () => Results.Ok(new { status = "ok", ts = DateTimeOffset.UtcNow }))
-               .WithName("Health")
+            app.MapGet("/health/basic", () => Results.Ok(new { status = "ok", ts = DateTimeOffset.UtcNow }))
+               .WithName("BasicHealth")
                .WithOpenApi();
 
             app.MapPost("/api/ingest", async (HttpRequest request, SmartCollectAPI.Services.IStorageService storage, SmartCollectAPI.Services.IJobQueue? queue, CancellationToken ct) =>
