@@ -148,9 +148,12 @@ public class IngestWorker : BackgroundService
                             // Try to get embedding from the canonical document
                             if (pipelineResult.CanonicalDocument.EmbeddingDim > 0)
                             {
-                                // The embedding would be stored in the pipeline result, but for now
-                                // we'll create a placeholder. In a full implementation, you'd pass
-                                // the embedding vector from the pipeline result.
+                                // Set the embedding vector from the pipeline result, if available
+                                if (pipelineResult.CanonicalDocument.Embedding != null)
+                                {
+                                    // Convert float[] to Pgvector.Vector if necessary
+                                    document.Embedding = new Vector(pipelineResult.CanonicalDocument.Embedding);
+                                }
                                 _logger.LogInformation("Document processed with {Dimensions} embedding dimensions", 
                                     pipelineResult.CanonicalDocument.EmbeddingDim);
                             }
