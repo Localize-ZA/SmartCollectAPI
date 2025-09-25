@@ -50,18 +50,29 @@ public class SmtpNotificationService : INotificationService
             mailMessage.To.Add(request.ToEmail);
 
             // Add attachments
+            List<MemoryStream>? attachmentStreams = null;
             if (request.Attachments != null && request.Attachments.Any())
             {
+                attachmentStreams = new List<MemoryStream>();
                 foreach (var attachment in request.Attachments)
                 {
                     var stream = new MemoryStream(attachment.Content);
                     var mailAttachment = new Attachment(stream, attachment.FileName, attachment.ContentType);
                     mailMessage.Attachments.Add(mailAttachment);
+                    attachmentStreams.Add(stream);
                 }
             }
 
             await smtpClient.SendMailAsync(mailMessage);
 
+            // Dispose attachment streams after sending the email
+            if (attachmentStreams != null)
+            {
+                foreach (var stream in attachmentStreams)
+                {
+                    stream.Dispose();
+                }
+            }
             _logger.LogInformation("Successfully sent email notification via SMTP");
 
             return new NotificationResult(
