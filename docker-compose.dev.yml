@@ -32,7 +32,7 @@ services:
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartcollect_user -d smartcollect"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d smartcollect"]
       interval: 30s
       timeout: 10s
       retries: 3

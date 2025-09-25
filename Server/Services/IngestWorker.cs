@@ -16,6 +16,8 @@ public class IngestWorker : BackgroundService
     private readonly IJsonParser _jsonParser;
     private readonly IXmlParser _xmlParser;
     private readonly ICsvParser _csvParser;
+    private readonly Repositories.IStagingRepository? _stagingRepo;
+    private readonly Repositories.IDocumentsRepository? _documentsRepo;
 
     private const string StreamName = "ingest-stream";
     private readonly string _uploadsRoot;
@@ -27,7 +29,9 @@ public class IngestWorker : BackgroundService
         IContentDetector detector,
         IJsonParser jsonParser,
         IXmlParser xmlParser,
-        ICsvParser csvParser)
+        ICsvParser csvParser,
+        Repositories.IStagingRepository? stagingRepo = null,
+        Repositories.IDocumentsRepository? documentsRepo = null)
     {
         _logger = logger;
         _redis = redis;
@@ -35,6 +39,8 @@ public class IngestWorker : BackgroundService
         _jsonParser = jsonParser;
         _xmlParser = xmlParser;
         _csvParser = csvParser;
+    _stagingRepo = stagingRepo;
+    _documentsRepo = documentsRepo;
 
         // Assume LocalStorageService default path 'uploads' when local. For now derive processed beside it.
         _uploadsRoot = Path.Combine(AppContext.BaseDirectory, "uploads");
@@ -91,6 +97,13 @@ public class IngestWorker : BackgroundService
                             continue;
                         }
 
+                        // Insert into staging as 'processing' if repo configured
+                        if (_stagingRepo is not null)
+                        {
+                            try { await _stagingRepo.InsertAsync(job.JobId.ToString(), job.SourceUri, job.MimeType, job.Sha256, null, "processing", stoppingToken); }
+                            catch (Exception ex) { _logger.LogWarning(ex, "Staging insert failed (may already exist) for job {JobId}", job.JobId); }
+                        }
+
                         await using var fs = File.OpenRead(absPath);
                         var mime = await _detector.DetectMimeAsync(fs, job.MimeType, stoppingToken);
                         fs.Position = 0;
@@ -119,6 +132,19 @@ public class IngestWorker : BackgroundService
                         var outFile = Path.Combine(outDir, job.JobId + ".json");
                         await File.WriteAllTextAsync(outFile, JsonSerializer.Serialize(canonical, new JsonSerializerOptions { WriteIndented = true }), stoppingToken);
 
+                        // Upsert into documents if repo configured
+                        if (_documentsRepo is not null)
+                        {
+                            try { await _documentsRepo.UpsertAsync(job.SourceUri, mime, job.Sha256, canonical.StructuredPayload ?? new System.Text.Json.Nodes.JsonObject(), stoppingToken); }
+                            catch (Exception ex) { _logger.LogError(ex, "Documents upsert failed for job {JobId}", job.JobId); }
+                        }
+
+                        if (_stagingRepo is not null)
+                        {
+                            try { await _stagingRepo.UpdateStatusAsync(job.JobId.ToString(), "done", stoppingToken); }
+                            catch (Exception ex) { _logger.LogWarning(ex, "Staging status update failed for job {JobId}", job.JobId); }
+                        }
+
                         await db.StreamAcknowledgeAsync(StreamName, group, e.Id);
                     }
                     catch (Exception ex)
@@ -128,10 +154,19 @@ public class IngestWorker : BackgroundService
                     }
                 }
             }
+            catch (TaskCanceledException)
+            {
+                // Graceful shutdown
+                break;
+            }
             catch (Exception ex)
             {
+                if (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 _logger.LogError(ex, "Worker loop error");
-                await Task.Delay(2000, stoppingToken);
+                try { await Task.Delay(2000, stoppingToken); } catch (TaskCanceledException) { break; }
             }
         }
     }

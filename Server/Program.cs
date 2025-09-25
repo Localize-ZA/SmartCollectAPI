@@ -42,7 +42,14 @@ namespace SmartCollectAPI
             var redisConn = builder.Configuration.GetConnectionString("Redis");
             if (!string.IsNullOrWhiteSpace(redisConn))
             {
-                builder.Services.AddSingleton(StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn));
+                builder.Services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(_ =>
+                {
+                    var options = StackExchange.Redis.ConfigurationOptions.Parse(redisConn);
+                    options.AbortOnConnectFail = false; // keep retrying in background
+                    options.ConnectRetry = Math.Max(3, options.ConnectRetry);
+                    options.ConnectTimeout = Math.Max(5000, options.ConnectTimeout);
+                    return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
+                });
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJobQueue, SmartCollectAPI.Services.RedisJobQueue>();
                 // Register background worker dependencies
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IContentDetector, SmartCollectAPI.Services.SimpleContentDetector>();
@@ -50,6 +57,17 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
+            }
+
+            // Postgres DataSource and repositories
+            var pgConn = builder.Configuration.GetConnectionString("Postgres");
+            if (!string.IsNullOrWhiteSpace(pgConn))
+            {
+                var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(pgConn);
+                var dataSource = dataSourceBuilder.Build();
+                builder.Services.AddSingleton(dataSource);
+                builder.Services.AddSingleton<SmartCollectAPI.Services.Repositories.IStagingRepository, SmartCollectAPI.Services.Repositories.StagingRepository>();
+                builder.Services.AddSingleton<SmartCollectAPI.Services.Repositories.IDocumentsRepository, SmartCollectAPI.Services.Repositories.DocumentsRepository>();
             }
 
             var app = builder.Build();
