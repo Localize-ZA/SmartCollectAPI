@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using Pgvector;
 using SmartCollectAPI.Data;
 using SmartCollectAPI.Models;
-using System.Text.Json;
 
 namespace SmartCollectAPI.Controllers;
 
@@ -154,6 +155,80 @@ public class DocumentsController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(documents);
+    }
+
+    /// <summary>
+    /// Return documents most similar to the supplied document (vector similarity)
+    /// </summary>
+    [HttpGet("{id}/similar")]
+    public async Task<ActionResult<List<DocumentSummary>>> GetSimilarDocuments(
+        Guid id,
+        [FromQuery] int limit = 5,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit < 1) limit = 5;
+        if (limit > 50) limit = 50;
+
+        var source = await _context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        if (source is null)
+        {
+            return NotFound();
+        }
+
+        if (source.Embedding is null)
+        {
+            return Ok(new List<DocumentSummary>());
+        }
+
+        var connectionString = _context.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            _logger.LogError("Database connection string not available when attempting similarity search.");
+            return StatusCode(500, "Database connection is not configured.");
+        }
+
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(cancellationToken);
+
+        await using var cmd = new NpgsqlCommand(@"
+            SELECT id, source_uri, mime, sha256, created_at, embedding IS NOT NULL AS has_embedding
+            FROM documents
+            WHERE embedding IS NOT NULL AND id <> @id
+            ORDER BY embedding <-> @embedding
+            LIMIT @limit;", conn);
+
+    cmd.Parameters.AddWithValue("id", id);
+    var embeddingParameter = new NpgsqlParameter<Vector>("embedding", source.Embedding);
+    cmd.Parameters.Add(embeddingParameter);
+    cmd.Parameters.AddWithValue("limit", limit);
+
+        var results = new List<DocumentSummary>();
+
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var createdAt = reader.GetDateTime(4);
+            if (createdAt.Kind == DateTimeKind.Unspecified)
+            {
+                createdAt = DateTime.SpecifyKind(createdAt, DateTimeKind.Utc);
+            }
+
+            var createdAtOffset = createdAt.Kind == DateTimeKind.Utc
+                ? new DateTimeOffset(createdAt, TimeSpan.Zero)
+                : new DateTimeOffset(createdAt);
+
+            results.Add(new DocumentSummary
+            {
+                Id = reader.GetGuid(0),
+                SourceUri = reader.GetString(1),
+                Mime = reader.IsDBNull(2) ? null : reader.GetString(2),
+                Sha256 = reader.IsDBNull(3) ? null : reader.GetString(3),
+                CreatedAt = createdAtOffset,
+                HasEmbedding = reader.GetBoolean(5)
+            });
+        }
+
+        return Ok(results);
     }
 }
 

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { getStagingDocuments, StagingDocumentSummary } from "@/lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const STATUS_FILTERS = ["all", "pending", "processing", "done", "failed"] as const;
 
@@ -17,26 +18,72 @@ export function StagingOverview() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<StatusFilter>("processing");
+  const [isPending, startTransition] = useTransition();
 
-  async function loadDocuments(filter: StatusFilter) {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getStagingDocuments(filter === "all" ? undefined : filter);
-      setDocuments(data);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    loadDocuments(activeFilter);
-    const interval = setInterval(() => loadDocuments(activeFilter), 20000);
-    return () => clearInterval(interval);
+    const initial = searchParams.get("staging");
+    if (initial && STATUS_FILTERS.includes(initial as StatusFilter)) {
+      if (initial !== activeFilter) {
+        setActiveFilter(initial as StatusFilter);
+      }
+      return;
+    }
+
+    if (!initial && activeFilter !== "processing") {
+      setActiveFilter("processing");
+    }
+  }, [searchParams, activeFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchDocs = async () => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getStagingDocuments(activeFilter === "all" ? undefined : activeFilter);
+        if (!cancelled) {
+          setDocuments(data);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : String(err);
+          setError(message);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchDocs();
+    const interval = setInterval(fetchDocs, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [activeFilter]);
+
+  function handleFilterChange(status: StatusFilter) {
+    if (status === activeFilter) return;
+    setActiveFilter(status);
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (status === "processing") {
+        params.delete("staging");
+      } else {
+        params.set("staging", status);
+      }
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    });
+  }
 
   const groupedByStatus = useMemo(() => {
     return documents.reduce<Record<string, number>>((acc, doc) => {
@@ -59,8 +106,9 @@ export function StagingOverview() {
               type="button"
               variant={status === activeFilter ? "default" : "outline"}
               size="sm"
-              onClick={() => setActiveFilter(status)}
+              onClick={() => handleFilterChange(status)}
               className="capitalize"
+              disabled={isPending}
             >
               {status}
               {status !== "all" && (

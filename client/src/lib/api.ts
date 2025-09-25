@@ -117,3 +117,14 @@ export async function searchDocuments(query: string, limit = 10): Promise<Docume
   if (!res.ok) throw new Error(`Search failed: ${res.status}`);
   return res.json();
 }
+
+export async function getSimilarDocuments(id: string, limit = 5): Promise<DocumentSummary[]> {
+  const url = new URL(`${API_BASE}/api/documents/${id}/similar`);
+  url.searchParams.set("limit", limit.toString());
+  const res = await fetch(url, { cache: "no-store" });
+  if (res.status === 404) {
+    throw new Error("Document not found");
+  }
+  if (!res.ok) throw new Error(`Similarity request failed: ${res.status}`);
+  return res.json();
+}

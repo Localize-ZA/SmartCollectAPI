@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   DocumentDetail,
   DocumentSummary,
   PagedDocuments,
   getDocument,
   getDocuments,
+  getSimilarDocuments,
+  searchDocuments,
 } from "@/lib/api";
 import {
   Table,
@@ -20,6 +22,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import {
   Pagination,
   PaginationContent,
@@ -38,7 +41,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CopyButton } from "@/components/ui/copy-button";
 import { formatDistanceToNow } from "date-fns";
-import { Eye } from "lucide-react";
+import { Eye, Search, XCircle } from "lucide-react";
 
 const PAGE_SIZE = 10;
 
@@ -48,10 +51,19 @@ export function DocumentsPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<DocumentSummary[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detail, setDetail] = useState<DocumentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  const [similar, setSimilar] = useState<DocumentSummary[] | null>(null);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const [similarError, setSimilarError] = useState<string | null>(null);
 
   async function loadPage(nextPage: number) {
     setLoading(true);
@@ -77,6 +89,8 @@ export function DocumentsPanel() {
     setDetail(null);
     setDetailError(null);
     setDetailLoading(true);
+    setSimilar(null);
+    setSimilarError(null);
     try {
       const doc = await getDocument(id);
       setDetail(doc);
@@ -86,6 +100,62 @@ export function DocumentsPanel() {
     } finally {
       setDetailLoading(false);
     }
+  }
+
+  useEffect(() => {
+    if (!detailId || !detail) {
+      setSimilar(null);
+      setSimilarLoading(false);
+      return;
+    }
+
+    const embeddingArray = Array.isArray(detail.embedding) ? detail.embedding : null;
+    if (!embeddingArray || embeddingArray.length === 0) {
+      setSimilar(null);
+      setSimilarLoading(false);
+      return;
+    }
+
+    setSimilarLoading(true);
+    setSimilarError(null);
+    getSimilarDocuments(detailId)
+      .then((items) => setSimilar(items.filter((item) => item.id !== detailId)))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        setSimilarError(message);
+      })
+      .finally(() => setSimilarLoading(false));
+  }, [detailId, detail]);
+
+  const isSearchActive = searchResults !== null;
+
+  async function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      clearSearch();
+      return;
+    }
+
+  setSearching(true);
+  setSearchResults([]);
+    setSearchError(null);
+    try {
+      const results = await searchDocuments(query, 25);
+      setSearchResults(results);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setSearchError(message);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function clearSearch() {
+    setSearchResults(null);
+    setSearchError(null);
+    setSearching(false);
+    setSearchQuery("");
   }
 
   const totalPages = paged?.totalPages ?? 1;
@@ -145,9 +215,39 @@ export function DocumentsPanel() {
         <CardDescription>Explore canonical records stored in PostgreSQL + pgvector.</CardDescription>
       </CardHeader>
       <CardContent>
+        <form onSubmit={handleSearch} className="mb-4 flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex w-full flex-1 items-center gap-3">
+            <div className="relative w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search canonical payload (semantic if embeddings available)"
+                className="pl-9"
+                aria-label="Search documents"
+              />
+            </div>
+            <Button type="submit" disabled={searching || !searchQuery.trim()}>
+              {searching ? "Searching…" : "Search"}
+            </Button>
+          </div>
+          {isSearchActive && (
+            <Button type="button" variant="ghost" size="sm" onClick={clearSearch} className="gap-2">
+              <XCircle className="size-4" />
+              Clear
+            </Button>
+          )}
+        </form>
+
         {error && (
           <Badge variant="destructive" className="mb-4">
             {error}
+          </Badge>
+        )}
+
+        {searchError && (
+          <Badge variant="destructive" className="mb-4">
+            {searchError}
           </Badge>
         )}
 
@@ -163,7 +263,7 @@ export function DocumentsPanel() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && !paged ? (
+            {searching && isSearchActive ? (
               <TableRow>
                 <TableCell colSpan={6}>
                   <div className="space-y-2 py-6">
@@ -173,6 +273,26 @@ export function DocumentsPanel() {
                   </div>
                 </TableCell>
               </TableRow>
+            ) : loading && !isSearchActive && !paged ? (
+              <TableRow>
+                <TableCell colSpan={6}>
+                  <div className="space-y-2 py-6">
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full" />
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : isSearchActive ? (
+              searchResults && searchResults.length > 0 ? (
+                searchResults.map(renderRow)
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                    No matches returned for that search.
+                  </TableCell>
+                </TableRow>
+              )
             ) : paged && paged.items.length > 0 ? (
               paged.items.map(renderRow)
             ) : (
@@ -187,9 +307,15 @@ export function DocumentsPanel() {
       </CardContent>
       <CardFooter className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs text-muted-foreground">
-          {paged ? `Showing ${(paged.page - 1) * paged.pageSize + 1}-${Math.min(paged.page * paged.pageSize, paged.totalCount)} of ${paged.totalCount}` : ""}
+          {isSearchActive
+            ? searchResults
+              ? `${searchResults.length} result${searchResults.length === 1 ? "" : "s"}`
+              : ""
+            : paged
+            ? `Showing ${(paged.page - 1) * paged.pageSize + 1}-${Math.min(paged.page * paged.pageSize, paged.totalCount)} of ${paged.totalCount}`
+            : ""}
         </div>
-        {paged && paged.totalPages > 1 && (
+        {!isSearchActive && paged && paged.totalPages > 1 && (
           <Pagination>
             <PaginationContent>
               <PaginationItem>
@@ -280,6 +406,43 @@ export function DocumentsPanel() {
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {detail.embedding && Array.isArray(detail.embedding) && detail.embedding.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="font-semibold">Similar documents</div>
+                    {similarLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-1/2" />
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </div>
+                    ) : similarError ? (
+                      <Badge variant="destructive">{similarError}</Badge>
+                    ) : similar && similar.length > 0 ? (
+                      <div className="space-y-2">
+                        {similar.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => openDetail(item.id)}
+                            className="flex w-full flex-col items-start gap-1 rounded-md border bg-card/80 p-3 text-left text-sm transition hover:bg-accent"
+                          >
+                            <div className="font-medium">{item.sourceUri}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span>{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
+                              {item.mime && <span>{item.mime}</span>}
+                              <Badge variant="outline" className="capitalize">
+                                {item.hasEmbedding ? "Embedded" : "Pending"}
+                              </Badge>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">No similar documents yet.</div>
+                    )}
                   </div>
                 )}
               </div>
