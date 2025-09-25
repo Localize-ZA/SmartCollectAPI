@@ -145,15 +145,10 @@ public class IngestWorker : BackgroundService
                                 Embedding = null // Will be set if embedding was successful
                             };
 
-                            // Try to get embedding from the canonical document
-                            if (pipelineResult.CanonicalDocument.EmbeddingDim > 0)
+                            // Try to get embedding from the pipeline result
+                            if (pipelineResult.EmbeddingVector != null)
                             {
-                                // Set the embedding vector from the pipeline result, if available
-                                if (pipelineResult.CanonicalDocument.Embedding != null)
-                                {
-                                    // Convert float[] to Pgvector.Vector if necessary
-                                    document.Embedding = new Vector(pipelineResult.CanonicalDocument.Embedding);
-                                }
+                                document.Embedding = pipelineResult.EmbeddingVector;
                                 _logger.LogInformation("Document processed with {Dimensions} embedding dimensions", 
                                     pipelineResult.CanonicalDocument.EmbeddingDim);
                             }

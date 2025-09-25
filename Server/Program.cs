@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using SmartCollectAPI.Data;
 using StackExchange.Redis;
-
+using Npgsql;
 using SmartCollectAPI.Services.Providers;
 
 namespace SmartCollectAPI

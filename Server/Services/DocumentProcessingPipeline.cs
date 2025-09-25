@@ -3,6 +3,7 @@ using SmartCollectAPI.Models;
 using SmartCollectAPI.Services.Providers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Pgvector;
 
 namespace SmartCollectAPI.Services;
 
@@ -98,7 +99,8 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             return new PipelineResult(
                 Success: true,
                 CanonicalDocument: canonicalDoc,
-                NotificationResult: notificationResult
+                NotificationResult: notificationResult,
+                EmbeddingVector: embeddingResult.Success ? embeddingResult.Embedding : null
             );
         }
         catch (Exception ex)
@@ -194,7 +196,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 Metadata: new Dictionary<string, object>
                 {
                     ["parser"] = "Structured",
-                    ["structured_data"] = structuredData,
+                    ["structured_data"] = structuredData!,
                     ["is_structured"] = true
                 }
             );
@@ -258,7 +260,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
         return new CanonicalDocument
         {
-            Id = job.Id,
+            Id = job.JobId,
             SourceUri = job.SourceUri,
             IngestTs = job.ReceivedAt,
             Mime = job.MimeType,
@@ -413,5 +415,6 @@ public record PipelineResult(
     bool Success,
     CanonicalDocument? CanonicalDocument,
     NotificationResult? NotificationResult = null,
+    Vector? EmbeddingVector = null,
     string? ErrorMessage = null
 );
