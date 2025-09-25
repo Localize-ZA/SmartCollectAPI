@@ -117,8 +117,7 @@ public class GoogleDocAiParser : IAdvancedDocumentParser
             var metadata = new Dictionary<string, object>
             {
                 ["pageCount"] = document.Pages?.Count ?? 0,
-                ["language"] = document.Pages?.FirstOrDefault()?.DetectedLanguages?.FirstOrDefault()?.LanguageCode ?? "unknown",
-                ["processorVersion"] = "unknown" // response.Document.Revision?.Processor property doesn't exist in this version
+                ["language"] = document.Pages?.FirstOrDefault()?.DetectedLanguages?.FirstOrDefault()?.LanguageCode ?? "unknown"
             };
 
             _logger.LogInformation("Successfully processed document with Google Document AI. Pages: {PageCount}, Entities: {EntityCount}", 
