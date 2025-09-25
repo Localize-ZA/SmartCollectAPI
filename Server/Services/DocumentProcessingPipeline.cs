@@ -258,7 +258,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
         return new CanonicalDocument
         {
-            Id = job.Id,
+            Id = job.JobId,
             SourceUri = job.SourceUri,
             IngestTs = job.ReceivedAt,
             Mime = job.MimeType,
@@ -268,6 +268,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             Entities = entities,
             Tables = tables,
             Sections = sections,
+            Embedding = embeddingResult.Success ? embeddingResult.Embedding?.ToArray() : null,
             EmbeddingDim = embeddingResult.Success ? _providerFactory.GetEmbeddingService().EmbeddingDimensions : 0,
             ProcessingStatus = parseResult.Success && embeddingResult.Success ? "processed" : "failed",
             ProcessingErrors = !parseResult.Success || !embeddingResult.Success ? 

@@ -14,6 +14,7 @@ public class CanonicalDocument
     public JsonArray? Entities { get; set; }
     public JsonArray? Tables { get; set; }
     public JsonArray? Sections { get; set; }
+    public float[]? Embedding { get; set; }
     public int EmbeddingDim { get; set; } = 1536;
     public string ProcessingStatus { get; set; } = "processed";
     public JsonNode? ProcessingErrors { get; set; }
