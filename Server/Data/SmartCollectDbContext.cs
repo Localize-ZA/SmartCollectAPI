@@ -52,7 +52,7 @@ public class SmartCollectDbContext : DbContext
             entity.Property(e => e.Canonical).HasColumnName("canonical").HasColumnType("jsonb").IsRequired();
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
-            entity.Property(e => e.Embedding).HasColumnName("embedding").HasColumnType("vector(1536)");
+            entity.Property(e => e.Embedding).HasColumnName("embedding");
 
             // Unique constraint on sha256
             entity.HasIndex(e => e.Sha256).IsUnique().HasDatabaseName("idx_documents_sha256");

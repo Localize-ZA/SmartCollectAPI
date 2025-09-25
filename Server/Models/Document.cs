@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.ComponentModel.DataAnnotations.Schema;
 using Pgvector;
 
 namespace SmartCollectAPI.Models;
@@ -12,5 +13,6 @@ public class Document
     public JsonNode Canonical { get; set; } = new JsonObject();
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    [Column(TypeName = "vector(1536)")]
     public Vector? Embedding { get; set; } // pgvector embedding
 }

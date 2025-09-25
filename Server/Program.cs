@@ -69,6 +69,7 @@ namespace SmartCollectAPI
                 // (JsonNode/JsonObject) can be mapped to PostgreSQL jsonb columns.
                 var dsBuilder = new NpgsqlDataSourceBuilder(connectionString);
                 dsBuilder.EnableDynamicJson();
+                dsBuilder.UseVector(); // Enable pgvector support
                 var dataSource = dsBuilder.Build();
                 builder.Services.AddSingleton(dataSource);
 
@@ -157,8 +158,9 @@ namespace SmartCollectAPI
                 // Register enhanced processing pipeline
                 builder.Services.AddScoped<SmartCollectAPI.Services.IDocumentProcessingPipeline, SmartCollectAPI.Services.DocumentProcessingPipeline>();
                 
-                // Register background worker
+                // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
+                builder.Services.AddHostedService<SmartCollectAPI.Services.RedisDataConsumer>();
             }
 
 

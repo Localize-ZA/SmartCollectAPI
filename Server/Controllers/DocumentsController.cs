@@ -230,6 +230,135 @@ public class DocumentsController : ControllerBase
 
         return Ok(results);
     }
+
+    /// <summary>
+    /// Get detailed document data including vector and normalized content
+    /// </summary>
+    [HttpGet("{id}/details")]
+    public async Task<ActionResult<DocumentDetails>> GetDocumentDetails(Guid id, CancellationToken cancellationToken = default)
+    {
+        var document = await _context.Documents
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+        if (document == null)
+        {
+            return NotFound();
+        }
+
+        // Get the corresponding staging document for processing info
+        var stagingDoc = await _context.StagingDocuments
+            .Where(sd => sd.Sha256 == document.Sha256)
+            .OrderByDescending(sd => sd.UpdatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return Ok(new DocumentDetails
+        {
+            Id = document.Id,
+            SourceUri = document.SourceUri,
+            Mime = document.Mime,
+            Sha256 = document.Sha256,
+            CreatedAt = document.CreatedAt,
+            UpdatedAt = document.UpdatedAt,
+            Canonical = document.Canonical,
+            HasEmbedding = document.Embedding != null,
+            EmbeddingDimensions = document.Embedding?.ToArray().Length ?? 0,
+            EmbeddingPreview = document.Embedding?.ToArray().Take(10).ToArray(), // First 10 dimensions for preview
+            ProcessingInfo = stagingDoc != null ? new ProcessingInfo
+            {
+                Status = stagingDoc.Status,
+                Attempts = stagingDoc.Attempts,
+                RawMetadata = stagingDoc.RawMetadata,
+                Normalized = stagingDoc.Normalized,
+                ProcessedAt = stagingDoc.UpdatedAt
+            } : null
+        });
+    }
+
+    /// <summary>
+    /// Send mock data to Redis for processing
+    /// </summary>
+    [HttpPost("redis/send")]
+    public ActionResult SendMockDataToRedis([FromBody] MockDataRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Content))
+        {
+            return BadRequest("Content is required");
+        }
+
+        try
+        {
+            // We'll need to inject IConnectionMultiplexer to send to Redis
+            // For now, return success and log the request
+            var streamName = "mock-data-stream";
+            var messageId = $"api-{Guid.NewGuid()}";
+            
+            _logger.LogInformation("Received mock data for Redis processing: Content='{Content}', Type='{ContentType}', Filename='{Filename}'", 
+                request.Content.Substring(0, Math.Min(100, request.Content.Length)), 
+                request.ContentType ?? "text/plain", 
+                request.Filename ?? "mock-data.txt");
+
+            var result = new
+            {
+                Message = "Mock data received and will be processed",
+                StreamName = streamName,
+                ContentLength = request.Content.Length,
+                ContentType = request.ContentType ?? "text/plain",
+                Filename = request.Filename ?? "mock-data.txt",
+                Note = "To actually send to Redis, you can use: XADD mock-data-stream * content \"your content\" content_type \"text/plain\" filename \"test.txt\""
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process mock data request");
+            return StatusCode(500, "Failed to process mock data");
+        }
+    }
+
+    /// <summary>
+    /// Get vector analysis for all documents with embeddings
+    /// </summary>
+    [HttpGet("vectors/analysis")]
+    public async Task<ActionResult<VectorAnalysis>> GetVectorAnalysis(CancellationToken cancellationToken = default)
+    {
+        var documentsWithVectors = await _context.Documents
+            .Where(d => d.Embedding != null)
+            .Select(d => new { d.Id, d.Mime, d.CreatedAt, d.Embedding })
+            .ToListAsync(cancellationToken);
+
+        if (!documentsWithVectors.Any())
+        {
+            return Ok(new VectorAnalysis
+            {
+                TotalDocumentsWithVectors = 0,
+                AverageDimensions = 0,
+                MimeTypeDistribution = new Dictionary<string, int>(),
+                DimensionStats = null
+            });
+        }
+
+        var mimeDistribution = documentsWithVectors
+            .GroupBy(d => d.Mime ?? "unknown")
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var dimensions = documentsWithVectors.Select(d => d.Embedding!.ToArray().Length).ToList();
+        var avgDimensions = dimensions.Average();
+
+        return Ok(new VectorAnalysis
+        {
+            TotalDocumentsWithVectors = documentsWithVectors.Count,
+            AverageDimensions = avgDimensions,
+            MimeTypeDistribution = mimeDistribution,
+            DimensionStats = new DimensionStats
+            {
+                Min = dimensions.Min(),
+                Max = dimensions.Max(),
+                Average = avgDimensions,
+                StandardDimension = dimensions.GroupBy(d => d).OrderByDescending(g => g.Count()).First().Key
+            }
+        });
+    }
 }
 
 public record DocumentSummary
@@ -263,4 +392,52 @@ public record SearchRequest
 {
     public string Query { get; init; } = string.Empty;
     public int? Limit { get; init; } = 10;
+}
+
+public record DocumentDetails
+{
+    public Guid Id { get; init; }
+    public string SourceUri { get; init; } = string.Empty;
+    public string? Mime { get; init; }
+    public string? Sha256 { get; init; }
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset UpdatedAt { get; init; }
+    public object Canonical { get; init; } = new();
+    public bool HasEmbedding { get; init; }
+    public int EmbeddingDimensions { get; init; }
+    public float[]? EmbeddingPreview { get; init; }
+    public ProcessingInfo? ProcessingInfo { get; init; }
+}
+
+public record ProcessingInfo
+{
+    public string? Status { get; init; }
+    public int Attempts { get; init; }
+    public object? RawMetadata { get; init; }
+    public object? Normalized { get; init; }
+    public DateTimeOffset ProcessedAt { get; init; }
+}
+
+public record VectorAnalysis
+{
+    public int TotalDocumentsWithVectors { get; init; }
+    public double AverageDimensions { get; init; }
+    public Dictionary<string, int> MimeTypeDistribution { get; init; } = new();
+    public DimensionStats? DimensionStats { get; init; }
+}
+
+public record DimensionStats
+{
+    public int Min { get; init; }
+    public int Max { get; init; }
+    public double Average { get; init; }
+    public int StandardDimension { get; init; }
+}
+
+public record MockDataRequest
+{
+    public string Content { get; init; } = string.Empty;
+    public string? ContentType { get; init; }
+    public string? Filename { get; init; }
+    public Dictionary<string, object>? Metadata { get; init; }
 }

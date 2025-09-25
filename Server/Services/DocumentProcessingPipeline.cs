@@ -68,7 +68,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
             // Step 3: Parse document based on type
             var parseResult = await ParseDocumentAsync(fileStream, detectedMimeType, cancellationToken);
-            fileStream.Position = 0; // Reset for potential reuse
+            // Note: Stream may be closed by parser, so don't try to reset position
 
             // Step 4: Extract entities from text
             EntityExtractionResult? entityResult = null;
