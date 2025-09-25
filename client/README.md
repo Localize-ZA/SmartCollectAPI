@@ -1,3 +1,30 @@
+# Client Dashboard
+
+A minimal Next.js dashboard using shadcn UI to:
+- Show server health (GET /health)
+- Upload documents to ingest (POST /api/ingest)
+
+## Configure
+
+The client uses `NEXT_PUBLIC_API_BASE` for the server base URL.
+- Defaults to `http://localhost:5082` (from Server launchSettings).
+- Override by creating a `.env.local` in this folder:
+
+```
+NEXT_PUBLIC_API_BASE=http://localhost:5082
+```
+
+## Run
+
+- Start the Server API (Debug) so the endpoints are available.
+- In another terminal, from `client/`:
+
+```
+npm install
+npm run dev
+```
+
+Open http://localhost:3000 and use the dashboard to check health and upload files.
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

@@ -25,12 +25,31 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IStorageService, SmartCollectAPI.Services.LocalStorageService>();
             }
 
+            // CORS for local dev (allow Next.js on :3000)
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("Dev", policy =>
+                {
+                    policy
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .AllowCredentials()
+                        .WithOrigins("http://localhost:3000", "https://localhost:3000");
+                });
+            });
+
             // Redis connection and job queue
             var redisConn = builder.Configuration.GetConnectionString("Redis");
             if (!string.IsNullOrWhiteSpace(redisConn))
             {
                 builder.Services.AddSingleton(StackExchange.Redis.ConnectionMultiplexer.Connect(redisConn));
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJobQueue, SmartCollectAPI.Services.RedisJobQueue>();
+                // Register background worker dependencies
+                builder.Services.AddSingleton<SmartCollectAPI.Services.IContentDetector, SmartCollectAPI.Services.SimpleContentDetector>();
+                builder.Services.AddSingleton<SmartCollectAPI.Services.IJsonParser, SmartCollectAPI.Services.JsonParser>();
+                builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
+                builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
+                builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
             }
 
             var app = builder.Build();
@@ -39,6 +58,7 @@ namespace SmartCollectAPI
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
+                app.UseCors("Dev");
             }
 
             app.UseHttpsRedirection();
