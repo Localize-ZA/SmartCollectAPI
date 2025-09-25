@@ -105,7 +105,10 @@ public class SimpleEmbeddingService : IEmbeddingService
         // Generate multiple hash values to fill the embedding space
         for (int i = 0; i < EmbeddingDimensions; i += 32) // SHA256 produces 32 bytes
         {
-            var seedBytes = BitConverter.GetBytes(i).Concat(textBytes).ToArray();
+            var seedBytesRaw = BitConverter.GetBytes(i);
+            var seedBytes = new byte[seedBytesRaw.Length + textBytes.Length];
+            Buffer.BlockCopy(seedBytesRaw, 0, seedBytes, 0, seedBytesRaw.Length);
+            Buffer.BlockCopy(textBytes, 0, seedBytes, seedBytesRaw.Length, textBytes.Length);
             var hash = sha256.ComputeHash(seedBytes);
             
             // Convert hash bytes to floats in range [-1, 1]
