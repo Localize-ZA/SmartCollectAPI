@@ -32,8 +32,9 @@ public class ProviderFactory : IProviderFactory
         return _options.Parser?.ToUpperInvariant() switch
         {
             "GOOGLE" => _serviceProvider.GetRequiredService<GoogleDocAiParser>(),
-            "OSS" => _serviceProvider.GetRequiredService<SimplePdfParser>(),
-            _ => _serviceProvider.GetRequiredService<SimplePdfParser>() // Default to OSS for now
+            "OSS" => _serviceProvider.GetRequiredService<PdfPigParser>(), // Use advanced PdfPig parser
+            "SIMPLE" => _serviceProvider.GetRequiredService<SimplePdfParser>(), // Keep simple as option
+            _ => _serviceProvider.GetRequiredService<PdfPigParser>() // Default to PdfPig for better parsing
         };
     }
 

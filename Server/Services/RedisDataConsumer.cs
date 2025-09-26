@@ -144,26 +144,20 @@ public class RedisDataConsumer : BackgroundService
         var storageService = scope.ServiceProvider.GetRequiredService<IStorageService>();
 
         // Store the content temporarily (similar to file upload)
-        var tempPath = await storageService.StoreFileAsync(
+        var tempPath = await storageService.SaveAsync(
             new MemoryStream(contentBytes), 
             mockFileName, 
             stoppingToken);
 
-        var jobEnvelope = new JobEnvelope
-        {
-            JobId = jobId,
-            FilePath = tempPath,
-            MimeType = contentType,
-            Sha256 = sha256,
-            Metadata = new Dictionary<string, object>
-            {
-                ["source"] = "redis",
-                ["stream"] = MockDataStreamName,
-                ["message_id"] = messageId,
-                ["original_metadata"] = metadata,
-                ["processed_at"] = DateTimeOffset.UtcNow
-            }
-        };
+        var jobEnvelope = new JobEnvelope(
+            JobId: jobId,
+            SourceUri: tempPath,
+            MimeType: contentType,
+            Sha256: sha256,
+            ReceivedAt: DateTimeOffset.UtcNow,
+            Origin: "Redis Stream Data",
+            NotifyEmail: null
+        );
 
         // Enqueue for processing through the existing pipeline
         await _jobQueue.EnqueueAsync(jobEnvelope, stoppingToken);

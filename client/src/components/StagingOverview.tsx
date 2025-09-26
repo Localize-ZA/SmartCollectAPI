@@ -15,6 +15,7 @@ type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export function StagingOverview() {
   const [documents, setDocuments] = useState<StagingDocumentSummary[]>([]);
+  const [allDocuments, setAllDocuments] = useState<StagingDocumentSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<StatusFilter>("processing");
@@ -38,10 +39,36 @@ export function StagingOverview() {
     }
   }, [searchParams, activeFilter]);
 
+  // Fetch all documents for status counts
   useEffect(() => {
     let cancelled = false;
 
-    const fetchDocs = async () => {
+    const fetchAllDocs = async () => {
+      if (cancelled) return;
+      try {
+        const allData = await getStagingDocuments(); // Get all documents for counts
+        if (!cancelled) {
+          setAllDocuments(allData);
+        }
+      } catch (err: unknown) {
+        // Don't show error for background fetch
+        console.warn('Failed to fetch all staging documents:', err);
+      }
+    };
+
+    fetchAllDocs();
+    const interval = setInterval(fetchAllDocs, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Fetch filtered documents for display
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchFilteredDocs = async () => {
       if (cancelled) return;
       setLoading(true);
       setError(null);
@@ -62,17 +89,19 @@ export function StagingOverview() {
       }
     };
 
-    fetchDocs();
-    const interval = setInterval(fetchDocs, 20000);
+    fetchFilteredDocs();
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [activeFilter]);
 
   function handleFilterChange(status: StatusFilter) {
     if (status === activeFilter) return;
+    
+    // Update the filter immediately for responsive UI
     setActiveFilter(status);
+    
+    // Update URL in a transition to avoid blocking
     startTransition(() => {
       const params = new URLSearchParams(searchParams.toString());
       if (status === "processing") {
@@ -86,11 +115,11 @@ export function StagingOverview() {
   }
 
   const groupedByStatus = useMemo(() => {
-    return documents.reduce<Record<string, number>>((acc, doc) => {
+    return allDocuments.reduce<Record<string, number>>((acc, doc) => {
       acc[doc.status] = (acc[doc.status] ?? 0) + 1;
       return acc;
     }, {});
-  }, [documents]);
+  }, [allDocuments]);
 
   return (
     <Card className="w-full">
@@ -113,7 +142,7 @@ export function StagingOverview() {
               {status}
               {status !== "all" && (
                 <Badge variant="secondary" className="ml-2">
-                  {groupedByStatus[status] ?? 0}
+                  {allDocuments.length === 0 ? "..." : (groupedByStatus[status] ?? 0)}
                 </Badge>
               )}
             </Button>

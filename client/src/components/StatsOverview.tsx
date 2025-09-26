@@ -78,7 +78,7 @@ export function StatsOverview() {
             {error}
           </Badge>
         )}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
           {metrics.map((metric) => (
             <div key={metric.label} className="rounded-lg border bg-card p-4 shadow-sm">
               <div className="text-sm text-muted-foreground">{metric.label}</div>

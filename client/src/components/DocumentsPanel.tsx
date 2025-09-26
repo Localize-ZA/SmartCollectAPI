@@ -178,7 +178,7 @@ export function DocumentsPanel() {
   function renderRow(item: DocumentSummary) {
     return (
       <TableRow key={item.id}>
-        <TableCell className="max-w-[220px] truncate" title={item.sourceUri}>
+        <TableCell className="max-w-[300px] xl:max-w-[400px] truncate" title={item.sourceUri}>
           {item.sourceUri}
         </TableCell>
         <TableCell>{item.mime ?? "Unknown"}</TableCell>
@@ -358,7 +358,7 @@ export function DocumentsPanel() {
       </CardFooter>
 
       <Dialog open={detailId !== null} onOpenChange={(open) => !open && setDetailId(null)}>
-        <DialogContent className="max-h-[80vh] max-w-3xl overflow-hidden">
+        <DialogContent className="max-h-[80vh] max-w-4xl xl:max-w-5xl overflow-hidden">
           <DialogHeader>
             <DialogTitle>Document details</DialogTitle>
             <DialogDescription>

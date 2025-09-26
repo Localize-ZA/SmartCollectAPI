@@ -147,6 +147,7 @@ namespace SmartCollectAPI
 
                 // Register OSS providers (default for all other services)
                 builder.Services.AddScoped<SimplePdfParser>();
+                builder.Services.AddScoped<PdfPigParser>(); // Advanced PDF parser
                 builder.Services.AddScoped<SimpleEmbeddingService>();
                 builder.Services.AddScoped<SmtpNotificationService>();
                 builder.Services.AddScoped<SimpleOcrService>();
@@ -263,6 +264,77 @@ namespace SmartCollectAPI
                 }
 
                 return Results.Accepted($"/api/jobs/{job.JobId}", new { job_id = job.JobId, sha256 = sha, source_uri = savedPath });
+            })
+            .DisableAntiforgery()
+            .WithOpenApi();
+
+            // Bulk ingest endpoint for multiple files
+            app.MapPost("/api/ingest/bulk", async (HttpRequest request, SmartCollectAPI.Services.IStorageService storage, SmartCollectAPI.Services.IJobQueue? queue, CancellationToken ct) =>
+            {
+                if (!request.HasFormContentType)
+                {
+                    return Results.BadRequest(new { error = "multipart/form-data required" });
+                }
+
+                var form = await request.ReadFormAsync(ct);
+                var files = form.Files.Where(f => f.Name == "files" && f.Length > 0).ToList();
+                var notify = form["notify_email"].FirstOrDefault();
+                
+                if (!files.Any())
+                {
+                    return Results.BadRequest(new { error = "at least one file is required" });
+                }
+
+                var results = new List<object>();
+                var errors = new List<object>();
+
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        await using var stream = file.OpenReadStream();
+                        var sha = await SmartCollectAPI.Services.Hashing.ComputeSha256Async(stream, resetPosition: true, ct);
+                        var savedPath = await storage.SaveAsync(stream, file.FileName, ct);
+                        var mime = file.ContentType ?? "application/octet-stream";
+
+                        var job = new SmartCollectAPI.Models.JobEnvelope(
+                            JobId: Guid.NewGuid(),
+                            SourceUri: savedPath,
+                            MimeType: mime,
+                            Sha256: sha,
+                            ReceivedAt: DateTimeOffset.UtcNow,
+                            Origin: "web-bulk",
+                            NotifyEmail: string.IsNullOrWhiteSpace(notify) ? null : notify
+                        );
+
+                        if (queue is not null)
+                        {
+                            await queue.EnqueueAsync(job, ct);
+                        }
+
+                        results.Add(new { 
+                            fileName = file.FileName,
+                            job_id = job.JobId, 
+                            sha256 = sha, 
+                            source_uri = savedPath 
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(new { 
+                            fileName = file.FileName, 
+                            error = ex.Message 
+                        });
+                    }
+                }
+
+                return Results.Accepted("/api/jobs/bulk", new { 
+                    results,
+                    errors,
+                    totalFiles = files.Count,
+                    successCount = results.Count,
+                    errorCount = errors.Count
+                });
             })
             .DisableAntiforgery()
             .WithOpenApi();
