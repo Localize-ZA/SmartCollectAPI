@@ -63,7 +63,12 @@ namespace smtp
 
             app.UseCors("AllowFrontend");
 
-            app.UseHttpsRedirection();
+            // Only use HTTPS redirection in production
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseHttpsRedirection();
+            }
+            
             app.UseAuthorization();
 
             // Add health check endpoint

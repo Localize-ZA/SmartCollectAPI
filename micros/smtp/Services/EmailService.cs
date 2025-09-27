@@ -50,7 +50,7 @@ public class EmailService : IEmailService
             return new EmailResponse
             {
                 Success = false,
-                Error = ex.Message,
+                ErrorMessage = ex.Message,
                 SentAt = DateTime.UtcNow
             };
         }
@@ -66,7 +66,7 @@ public class EmailService : IEmailService
                 return new EmailResponse
                 {
                     Success = false,
-                    Error = $"Template '{request.TemplateName}' not found",
+                    ErrorMessage = $"Template '{request.TemplateName}' not found",
                     SentAt = DateTime.UtcNow
                 };
             }
@@ -94,7 +94,7 @@ public class EmailService : IEmailService
             return new EmailResponse
             {
                 Success = false,
-                Error = ex.Message,
+                ErrorMessage = ex.Message,
                 SentAt = DateTime.UtcNow
             };
         }
@@ -199,6 +199,81 @@ public class EmailService : IEmailService
         if (!string.IsNullOrEmpty(username) && !string.IsNullOrEmpty(password))
         {
             await client.AuthenticateAsync(username, password, cancellationToken);
+        }
+    }
+
+    public async Task<BulkEmailResponse> SendBulkEmailsAsync(BulkEmailRequest request, CancellationToken cancellationToken = default)
+    {
+        var results = new List<EmailResult>();
+        var successCount = 0;
+        var failureCount = 0;
+
+        foreach (var recipient in request.Recipients)
+        {
+            try
+            {
+                var emailRequest = new EmailRequest
+                {
+                    To = recipient,
+                    Subject = request.Subject,
+                    Body = request.Body,
+                    IsHtml = request.IsHtml,
+                    Priority = request.Priority
+                };
+
+                var response = await SendEmailAsync(emailRequest, cancellationToken);
+                
+                if (response.Success)
+                {
+                    successCount++;
+                    results.Add(new EmailResult
+                    {
+                        Recipient = recipient,
+                        Success = true,
+                        MessageId = response.MessageId
+                    });
+                }
+                else
+                {
+                    failureCount++;
+                    results.Add(new EmailResult
+                    {
+                        Recipient = recipient,
+                        Success = false,
+                        ErrorMessage = response.ErrorMessage
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                failureCount++;
+                results.Add(new EmailResult
+                {
+                    Recipient = recipient,
+                    Success = false,
+                    ErrorMessage = ex.Message
+                });
+                _logger.LogError(ex, "Failed to send bulk email to {Recipient}", recipient);
+            }
+        }
+
+        return new BulkEmailResponse
+        {
+            SuccessCount = successCount,
+            FailureCount = failureCount,
+            Results = results
+        };
+    }
+
+    public string GetSmtpHost()
+    {
+        try
+        {
+            return _configuration["Smtp:Host"] ?? string.Empty;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 }

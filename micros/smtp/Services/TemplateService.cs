@@ -43,6 +43,11 @@ public class TemplateService : ITemplateService
         return Task.FromResult(_templates.Keys.ToList());
     }
 
+    public Task<List<EmailTemplate>> GetTemplatesAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_templates.Values.ToList());
+    }
+
     private Dictionary<string, EmailTemplate> InitializeDefaultTemplates()
     {
         return new Dictionary<string, EmailTemplate>

@@ -153,20 +153,22 @@ namespace smtp.Controllers
         {
             try
             {
-                var isSmtpConfigured = !string.IsNullOrEmpty(_emailService.GetSmtpHost());
+                var smtpHost = _emailService?.GetSmtpHost() ?? string.Empty;
+                var isSmtpConfigured = !string.IsNullOrEmpty(smtpHost);
                 return Ok(new
                 {
                     status = isSmtpConfigured ? "healthy" : "degraded",
                     smtpConfigured = isSmtpConfigured,
+                    smtpHost = smtpHost,
                     timestamp = DateTimeOffset.UtcNow
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Exception occurred during health check");
-                return StatusCode(500, new
+                return Ok(new
                 {
-                    status = "unhealthy",
+                    status = "degraded",
                     error = ex.Message,
                     timestamp = DateTimeOffset.UtcNow
                 });
