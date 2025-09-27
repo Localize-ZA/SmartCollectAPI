@@ -207,3 +207,75 @@ export async function getSimilarDocuments(id: string, limit = 5): Promise<Docume
   if (!res.ok) throw new Error(`Similarity request failed: ${res.status}`);
   return res.json();
 }
+
+// Microservices monitoring
+export interface MicroserviceStatus {
+  name: string;
+  url: string;
+  status: 'healthy' | 'unhealthy' | 'unknown';
+  responseTime?: number;
+  lastChecked: string;
+  version?: string;
+  error?: string;
+}
+
+export async function checkMicroserviceHealth(name: string, url: string): Promise<MicroserviceStatus> {
+  const startTime = Date.now();
+  try {
+    const healthUrl = `${url}/health/basic`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const res = await fetch(healthUrl, {
+      cache: "no-store",
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    const responseTime = Date.now() - startTime;
+    
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        name,
+        url,
+        status: 'healthy',
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        version: data.version || '1.0.0'
+      };
+    } else {
+      return {
+        name,
+        url,
+        status: 'unhealthy',
+        responseTime,
+        lastChecked: new Date().toISOString(),
+        error: `HTTP ${res.status}`
+      };
+    }
+  } catch (error) {
+    const responseTime = Date.now() - startTime;
+    return {
+      name,
+      url,
+      status: 'unhealthy',
+      responseTime,
+      lastChecked: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export async function getAllMicroservicesHealth(): Promise<MicroserviceStatus[]> {
+  const microservices = [
+    { name: 'Main API', url: API_BASE },
+    { name: 'SMTP Service', url: 'http://localhost:5083' }
+  ];
+
+  const healthChecks = microservices.map(service => 
+    checkMicroserviceHealth(service.name, service.url)
+  );
+
+  return Promise.all(healthChecks);
+}

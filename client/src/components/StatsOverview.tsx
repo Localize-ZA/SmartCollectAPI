@@ -85,7 +85,7 @@ export function StatsOverview() {
               {loading && !stats ? (
                 <Skeleton className="mt-2 h-8 w-20" />
               ) : (
-                <div className="mt-2 text-2xl font-semibold">{metric.value}</div>
+                <div className="mt-2 text-xl font-semibold">{metric.value}</div>
               )}
               <div className="mt-1 text-xs text-muted-foreground">{metric.help}</div>
             </div>

@@ -1,0 +1,81 @@
+@smtp_HostAddress = http://localhost:5083
+
+### Health Check
+GET {{smtp_HostAddress}}/health
+Accept: application/json
+
+### Basic Health Check
+GET {{smtp_HostAddress}}/health/basic
+Accept: application/json
+
+### Ping
+GET {{smtp_HostAddress}}/ping
+Accept: application/json
+
+### Test SMTP Connection
+GET {{smtp_HostAddress}}/api/email/test-connection
+Accept: application/json
+
+### Get Available Templates
+GET {{smtp_HostAddress}}/api/email/templates
+Accept: application/json
+
+### Get Specific Template
+GET {{smtp_HostAddress}}/api/email/templates/welcome
+Accept: application/json
+
+### Send Simple Email
+POST {{smtp_HostAddress}}/api/email/send
+Content-Type: application/json
+
+{
+  "to": "test@example.com",
+  "subject": "Test Email",
+  "body": "This is a test email from the SMTP microservice.",
+  "isHtml": false,
+  "priority": 1
+}
+
+### Send HTML Email
+POST {{smtp_HostAddress}}/api/email/send
+Content-Type: application/json
+
+{
+  "to": "test@example.com",
+  "subject": "HTML Test Email",
+  "body": "<html><body><h1>Hello World!</h1><p>This is an <strong>HTML</strong> email.</p></body></html>",
+  "isHtml": true,
+  "priority": 1
+}
+
+### Send Template Email
+POST {{smtp_HostAddress}}/api/email/send-template
+Content-Type: application/json
+
+{
+  "to": "test@example.com",
+  "templateName": "welcome",
+  "variables": {
+    "UserName": "John Doe",
+    "CompanyName": "Paratech",
+    "Email": "test@example.com"
+  },
+  "priority": 1
+}
+
+### Send Document Processing Notification
+POST {{smtp_HostAddress}}/api/email/send-template
+Content-Type: application/json
+
+{
+  "to": "test@example.com",
+  "templateName": "document-processed",
+  "variables": {
+    "UserName": "John Doe",
+    "DocumentName": "sample-document.pdf",
+    "DocumentId": "12345",
+    "Status": "Completed",
+    "ProcessedAt": "2025-09-27T10:30:00Z"
+  },
+  "priority": 1
+}
