@@ -50,7 +50,7 @@ public class EmailResponse
 {
     public string MessageId { get; set; } = string.Empty;
     public bool Success { get; set; }
-    public string? Error { get; set; }
+    public string? ErrorMessage { get; set; }
     public DateTime SentAt { get; set; }
 }
 
@@ -81,4 +81,35 @@ public class TemplateEmailRequest
     public Dictionary<string, object>? Variables { get; set; }
     
     public EmailPriority Priority { get; set; } = EmailPriority.Normal;
+}
+
+public class BulkEmailRequest
+{
+    [Required]
+    public List<string> Recipients { get; set; } = new();
+    
+    [Required]
+    public string Subject { get; set; } = string.Empty;
+    
+    [Required]
+    public string Body { get; set; } = string.Empty;
+    
+    public bool IsHtml { get; set; } = false;
+    
+    public EmailPriority Priority { get; set; } = EmailPriority.Normal;
+}
+
+public class BulkEmailResponse
+{
+    public int SuccessCount { get; set; }
+    public int FailureCount { get; set; }
+    public List<EmailResult> Results { get; set; } = new();
+}
+
+public class EmailResult
+{
+    public string Recipient { get; set; } = string.Empty;
+    public bool Success { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? MessageId { get; set; }
 }
