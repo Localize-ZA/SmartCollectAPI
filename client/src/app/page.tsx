@@ -2,6 +2,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { HealthStatus } from "@/components/HealthStatus";
 import { StatsOverview } from "@/components/StatsOverview";
 import { StagingOverview } from "@/components/StagingOverview";
+import { MicroservicesStatus } from "@/components/MicroservicesStatus";
 
 export default function Home() {
   return (
@@ -23,7 +24,8 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-1">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <MicroservicesStatus />
           <StagingOverview />
         </div>
       </div>

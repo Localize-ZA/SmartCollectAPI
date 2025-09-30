@@ -1,0 +1,19 @@
+{
+  "article": {
+    "title": "Breaking: SpaceX Successfully Launches Mars Mission",
+    "author": "Jane Smith",
+    "publication_date": "2025-09-30",
+    "content": "SpaceX achieved a historic milestone today with the successful launch of its Mars-bound spacecraft from Kennedy Space Center in Florida. The mission, dubbed 'Red Planet Explorer', carries advanced scientific instruments worth $10 billion. Elon Musk, CEO of SpaceX, expressed his excitement during the live broadcast, stating that this represents humanity's next giant leap. The spacecraft is expected to reach Mars in approximately 7 months, where it will conduct extensive geological surveys. NASA Administrator Bill Nelson praised the achievement, calling it a testament to American innovation and international collaboration.",
+    "location": "Kennedy Space Center, Florida",
+    "keywords": ["SpaceX", "Mars", "space exploration", "Elon Musk", "NASA"],
+    "contact_info": {
+      "press_office": "+1-321-867-5309",
+      "email": "press@spacex.com"
+    },
+    "financial_details": {
+      "mission_cost": 10000000000,
+      "currency": "USD",
+      "funding_sources": ["NASA", "Private Investment", "Government Grants"]
+    }
+  }
+}

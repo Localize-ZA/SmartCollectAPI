@@ -222,7 +222,9 @@ export interface MicroserviceStatus {
 export async function checkMicroserviceHealth(name: string, url: string): Promise<MicroserviceStatus> {
   const startTime = Date.now();
   try {
-    const healthUrl = `${url}/health/basic`;
+    // Determine health endpoint based on service type
+    const healthPath = name === 'spaCy NLP Service' ? '/health' : '/health/basic';
+    const healthUrl = `${url}${healthPath}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
@@ -236,10 +238,12 @@ export async function checkMicroserviceHealth(name: string, url: string): Promis
     
     if (res.ok) {
       const data = await res.json();
+      // Handle different response formats
+      const isHealthy = data.status === 'healthy' || data.status === 'ok';
       return {
         name,
         url,
-        status: 'healthy',
+        status: isHealthy ? 'healthy' : 'unhealthy',
         responseTime,
         lastChecked: new Date().toISOString(),
         version: data.version || '1.0.0'
@@ -270,7 +274,8 @@ export async function checkMicroserviceHealth(name: string, url: string): Promis
 export async function getAllMicroservicesHealth(): Promise<MicroserviceStatus[]> {
   const microservices = [
     { name: 'Main API', url: API_BASE },
-    { name: 'SMTP Service', url: 'http://localhost:5083' }
+    { name: 'SMTP Service', url: 'http://localhost:5083' },
+    { name: 'spaCy NLP Service', url: 'http://localhost:5084' }
   ];
 
   const healthChecks = microservices.map(service => 

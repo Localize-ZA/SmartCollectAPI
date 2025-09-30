@@ -150,13 +150,11 @@ public class DocumentsController : ControllerBase
         var pattern = $"%{request.Query.Trim()}%";
 
         var documentsQuery = _context.Documents
-            .FromSqlInterpolated($@
-                SELECT id, source_uri, mime, sha256, canonical, created_at, updated_at, embedding
+            .FromSqlInterpolated($@"SELECT id, source_uri, mime, sha256, canonical, created_at, updated_at, embedding
                 FROM documents
                 WHERE canonical::text ILIKE {pattern}
                 ORDER BY created_at DESC
-                LIMIT {limit}
-            )
+                LIMIT {limit}")
             .AsNoTracking();
 
         var documents = await documentsQuery
