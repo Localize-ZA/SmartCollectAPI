@@ -46,14 +46,14 @@ public class ProviderFactory : IProviderFactory
 
     public IEmbeddingService GetEmbeddingService()
     {
-        // Only OSS embedding service is supported
-        return _serviceProvider.GetRequiredService<SimpleEmbeddingService>();
+        // Use spaCy NLP service for embeddings
+        return _serviceProvider.GetRequiredService<SpacyNlpService>();
     }
 
     public IEntityExtractionService GetEntityExtractionService()
     {
-        // Only OSS entity extraction service is supported
-        return _serviceProvider.GetRequiredService<SimpleEntityExtractionService>();
+        // Use spaCy NLP service for entity extraction
+        return _serviceProvider.GetRequiredService<SpacyNlpService>();
     }
 
     public INotificationService GetNotificationService()

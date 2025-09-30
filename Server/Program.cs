@@ -152,6 +152,10 @@ namespace SmartCollectAPI
                 builder.Services.AddScoped<SmtpNotificationService>();
                 builder.Services.AddScoped<SimpleOcrService>();
                 builder.Services.AddScoped<SimpleEntityExtractionService>();
+                
+                // Register spaCy NLP service (replaces Simple embedding and entity services)
+                builder.Services.AddHttpClient<SpacyNlpService>();
+                builder.Services.AddScoped<SpacyNlpService>();
 
                 // Register provider factory
                 builder.Services.AddScoped<IProviderFactory, ProviderFactory>();
