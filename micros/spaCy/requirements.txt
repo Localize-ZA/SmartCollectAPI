@@ -1,0 +1,20 @@
+# Core FastAPI dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.5.0
+python-dotenv==1.0.0
+httpx==0.25.2
+
+# Redis
+redis==5.0.1
+
+# spaCy - using version with better Windows compatibility
+spacy>=3.6.0,<3.8.0
+
+# Core ML dependencies - using compatible versions for Windows
+numpy>=1.21.0,<2.0.0
+scikit-learn>=1.0.0,<1.4.0
+
+# spaCy language models (install after pip install with: python -m spacy download en_core_web_sm)
+# Using en_core_web_sm instead of md for easier installation

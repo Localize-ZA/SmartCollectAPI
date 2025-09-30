@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { HealthProvider } from "@/components/HealthProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { ThemeShortcutProvider } from "@/hooks/useThemeShortcut";
+import { SettingsProvider } from "@/components/SettingsProvider";
+import { themeScript } from "@/components/ThemeScript";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,13 +28,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <HealthProvider>
-          {children}
-        </HealthProvider>
+        <ThemeProvider>
+          <SettingsProvider>
+            <ThemeShortcutProvider>
+              <HealthProvider>
+                {children}
+              </HealthProvider>
+            </ThemeShortcutProvider>
+          </SettingsProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

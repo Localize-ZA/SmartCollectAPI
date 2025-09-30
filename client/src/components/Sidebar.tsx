@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { SettingsModal } from "@/components/SettingsModal";
+import { useSettings } from "@/components/SettingsProvider";
 
 interface SidebarItem {
   title: string;
@@ -73,11 +75,6 @@ const sidebarItems: SidebarItem[] = [
     href: "/alerts",
     icon: AlertTriangle,
   },
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
-  },
 ];
 
 interface SidebarProps {
@@ -88,6 +85,7 @@ interface SidebarProps {
 
 export function Sidebar({ className, collapsed: externalCollapsed, onCollapsedChange }: SidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const { isOpen: settingsOpen, openSettings, closeSettings } = useSettings();
   const pathname = usePathname();
   
   // Use external state if provided, otherwise use internal state
@@ -155,17 +153,34 @@ export function Sidebar({ className, collapsed: externalCollapsed, onCollapsedCh
             </Link>
           );
         })}
+        
+        {/* Settings Button */}
+        <button
+          onClick={openSettings}
+          className={cn(
+            "w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground text-muted-foreground"
+          )}
+        >
+          <Settings className="h-4 w-4 flex-shrink-0" />
+          {!collapsed && <span className="flex-1 text-left">Settings</span>}
+        </button>
       </nav>
 
       {/* Footer */}
-      {!collapsed && (
-        <div className="absolute bottom-4 left-4 right-4">
+      <div className="absolute bottom-4 left-4 right-4">        
+        {!collapsed && (
           <div className="text-xs text-muted-foreground text-center">
             <p>SmartCollect API</p>
             <p>v1.0.0</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={settingsOpen} 
+        onClose={closeSettings} 
+      />
     </div>
   );
 }
