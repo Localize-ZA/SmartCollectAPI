@@ -134,15 +134,32 @@ public class DocumentsController : ControllerBase
         [FromBody] SearchRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(request.Query))
+        {
+            return BadRequest("Search query is required.");
+        }
+
         // This is a placeholder for vector similarity search
         // In a full implementation, you'd use pgvector's <-> operator
         _logger.LogInformation("Vector similarity search requested for: {Query}", request.Query);
 
-        // For now, return a simple text-based search
-        var documents = await _context.Documents
-            .Where(d => EF.Functions.ILike(d.Canonical.ToString(), $"%{request.Query}%"))
-            .OrderByDescending(d => d.CreatedAt)
-            .Take(request.Limit ?? 10)
+        var limit = request.Limit ?? 10;
+        if (limit < 1) limit = 10;
+        if (limit > 100) limit = 100;
+
+        var pattern = $"%{request.Query.Trim()}%";
+
+        var documentsQuery = _context.Documents
+            .FromSqlInterpolated($@
+                SELECT id, source_uri, mime, sha256, canonical, created_at, updated_at, embedding
+                FROM documents
+                WHERE canonical::text ILIKE {pattern}
+                ORDER BY created_at DESC
+                LIMIT {limit}
+            )
+            .AsNoTracking();
+
+        var documents = await documentsQuery
             .Select(d => new DocumentSummary
             {
                 Id = d.Id,
