@@ -12,9 +12,9 @@ if errorlevel 1 (
 )
 
 REM Create virtual environment if it doesn't exist
-if not exist "venv" (
+if not exist ".venv" (
     echo Creating virtual environment...
-    python -m venv venv
+    python -m venv .venv
     if errorlevel 1 (
         echo Failed to create virtual environment
         pause
@@ -24,7 +24,7 @@ if not exist "venv" (
 
 REM Activate virtual environment
 echo Activating virtual environment...
-call venv\Scripts\activate.bat
+call .venv\Scripts\activate.bat
 if errorlevel 1 (
     echo Failed to activate virtual environment
     pause
@@ -42,11 +42,11 @@ if errorlevel 1 (
     echo Installing core packages with binary wheels only...
     pip install --only-binary=:all: fastapi uvicorn redis python-multipart pydantic python-dotenv httpx
     
-    echo Installing numpy and scikit-learn...
-    pip install --only-binary=:all: "numpy>=1.21.0,<2.0.0" "scikit-learn>=1.0.0,<1.4.0"
+    echo Installing core packages...
+    pip install --only-binary=:all: fastapi uvicorn redis python-multipart pydantic python-dotenv httpx
     
     echo Installing spaCy...
-    pip install --only-binary=:all: "spacy>=3.6.0,<3.8.0"
+    pip install --only-binary=:all: "spacy>=3.8.0"
     
     if errorlevel 1 (
         echo Package installation failed. This may be due to missing C++ build tools.

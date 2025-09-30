@@ -1,42 +1,74 @@
-# SmartCollectAPI - Google-First Document Processing Pipeline
+# SmartCollectAPI - Intelligent Document Processing Pipeline
 
-A comprehensive document processing pipeline that leverages Google Cloud services for intelligent document parsing, entity extraction, vectorization, and notification delivery.
+A comprehensive document processing pipeline that transforms raw documents into structured, intelligent data using modern NLP and AI services. The system features a microservices architecture with specialized processing components.
 
 ## 🎯 System Overview
 
-SmartCollectAPI transforms raw documents (PDFs, Word, images, JSON, XML, CSV) into structured, intelligent data using Google Cloud AI services while providing fallback OSS alternatives. The system follows the **ingest → detect → parse → normalize → enrich → vectorize → persist → notify** pipeline.
+SmartCollectAPI transforms raw documents (PDFs, Word, images, JSON, XML, CSV) into structured, intelligent data using a combination of specialized microservices and AI-powered analysis. The system follows the **ingest → detect → parse → normalize → enrich → vectorize → persist → notify** pipeline.
 
 ## 🛠️ Tech Stack
 
-- **.NET 9** - Minimal API + Background Services
+### Core Services
+- **.NET 9** - Main API with Minimal API + Background Services
 - **Redis** - Queue management with streams and DLQ
 - **PostgreSQL + pgvector** - Structured storage with vector similarity search
-- **Google Cloud Services:**
-  - Document AI - PDF/Word parsing with OCR and layout preservation
-  - Vision AI - Image OCR and object detection
-  - Natural Language AI - Entity extraction and sentiment analysis
-  - Vertex AI - Text embeddings (1536 dimensions)
-  - Gmail API - Notification delivery
-- **OSS Fallbacks** - SMTP, simple embeddings, basic PDF parsing
+- **Next.js 14+** - Modern React-based frontend with TypeScript
+
+### Microservices Architecture
+- **spaCy NLP Service** - Python FastAPI microservice for advanced NLP processing
+  - Entity extraction and recognition
+  - Text classification and categorization
+  - Key phrase extraction
+  - Sentiment analysis
+  - Word embeddings and similarity
+- **Document Processing Pipeline** - Specialized parsers for various formats
+- **Notification Service** - SMTP-based email notifications
 
 ## 🏗️ Architecture
 
-### Provider-Based Architecture
-All Google Cloud services are wrapped behind interfaces with OSS fallbacks:
-- `IAdvancedDocumentParser` → GoogleDocAiParser | SimplePdfParser
-- `IOcrService` → GoogleVisionOcrService | (Future: TesseractOcrService)
-- `IEmbeddingService` → VertexEmbeddingService | SimpleEmbeddingService
-- `IEntityExtractionService` → GoogleEntityExtractionService
-- `INotificationService` → GmailNotificationService | SmtpNotificationService
+### Microservices Architecture
+The system is built with a modular microservices approach:
+- **Main API (.NET 9)** - Document ingestion, orchestration, and data persistence
+- **spaCy NLP Service (Python FastAPI)** - Advanced natural language processing
+- **Redis Queue System** - Asynchronous job processing and message queuing
+- **PostgreSQL Database** - Document storage with vector search capabilities
+- **Next.js Frontend** - Modern web interface with real-time updates
+
+## 🧠 spaCy NLP Microservice
+
+The spaCy NLP service provides comprehensive natural language processing capabilities through a FastAPI-based microservice architecture.
+
+### Features
+- **Named Entity Recognition (NER)** - Extract persons, organizations, locations, dates, etc.
+- **Text Classification** - Categorize documents by content type (financial, legal, technical, etc.)
+- **Key Phrase Extraction** - Identify important terms and concepts
+- **Sentiment Analysis** - Determine emotional tone and sentiment
+- **Word Embeddings** - Generate semantic vector representations
+- **Async Processing** - Background job processing with Redis integration
+
+### API Endpoints
+- `GET /health` - Service health check
+- `POST /process` - Process document text with full NLP pipeline
+- `POST /extract-entities` - Extract named entities only
+- `POST /classify` - Classify document content
+- `POST /analyze-sentiment` - Analyze text sentiment
+- `GET /jobs/{job_id}` - Check processing job status
+
+### Technical Stack
+- **FastAPI** - Modern Python web framework with automatic OpenAPI docs
+- **spaCy 3.8+** - Industrial-strength NLP library
+- **Redis** - Job queue and result caching
+- **Pydantic** - Data validation and serialization
+- **Docker** - Containerized deployment
 
 ### Processing Pipeline
 1. **Ingestion** - File upload → storage → SHA256 deduplication → Redis queue
 2. **Type Detection** - MIME type detection with content sniffing
 3. **Parsing** - Route to appropriate parser based on content type
-4. **Entity Extraction** - Google Natural Language API for entities and sentiment
-5. **Vectorization** - Vertex AI embeddings with text chunking
+4. **NLP Processing** - spaCy microservice for entity extraction, classification, and sentiment analysis
+5. **Vectorization** - Text embeddings and semantic analysis
 6. **Persistence** - Canonical JSON + vectors stored in PostgreSQL
-7. **Notification** - Gmail/SMTP delivery with processing summary
+7. **Notification** - SMTP email delivery with processing summary
 
 ### Database Schema
 ```sql
@@ -64,32 +96,24 @@ CREATE TABLE documents (
   canonical JSONB NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
-  embedding VECTOR(1536)
+  embedding VECTOR -- Vector dimensions depend on NLP service configuration
 );
 ```
 
 ## ⚙️ Configuration
 
-Configure provider selection in `appsettings.json`:
-
+### Main API Configuration (`appsettings.json`)
 ```json
 {
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Database=SmartCollectDB;Username=postgres;Password=yourpassword",
+    "Redis": "localhost:6379"
+  },
   "Services": {
-    "Parser": "Google",         // Google | OSS
-    "OCR": "Google",           // Google | OSS  
-    "Embeddings": "Google",    // Google | OSS
-    "EntityExtraction": "Google", // Google | OSS
-    "Notifications": "Google"   // Google | OSS
-  },
-  "GoogleCloud": {
-    "ProjectId": "your-project-id",
-    "Location": "us-central1",
-    "ProcessorId": "your-processor-id",
-    "CredentialsPath": "path/to/service-account.json"
-  },
-  "Gmail": {
-    "CredentialsPath": "path/to/gmail-credentials.json",
-    "FromEmail": "noreply@yourcompany.com"
+    "SpacyNlpService": {
+      "BaseUrl": "http://localhost:5084",
+      "Timeout": 30000
+    }
   },
   "Smtp": {
     "Host": "smtp.gmail.com",
@@ -100,6 +124,30 @@ Configure provider selection in `appsettings.json`:
     "FromEmail": "noreply@yourcompany.com"
   }
 }
+```
+
+### spaCy NLP Service Configuration (`.env`)
+```env
+# Service Settings
+SERVICE_PORT=5084
+SERVICE_VERSION=1.0.0
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# spaCy Configuration
+SPACY_MODEL=en_core_web_sm
+BATCH_SIZE=10
+
+# Feature Flags
+ENABLE_NER=true
+ENABLE_CLASSIFICATION=true
+ENABLE_KEY_PHRASES=true
+ENABLE_EMBEDDINGS=true
+ENABLE_SENTIMENT=true
+```
 ```
 
 ## 📄 Canonical Document Schema
@@ -125,7 +173,7 @@ Each processed document is normalized to this schema:
   ],
   "tables": [],
   "sections": [],
-  "embedding_dim": 1536,
+  "embedding_dim": 300,
   "processing_status": "processed",
   "processing_errors": null,
   "schema_version": "v1"
@@ -140,20 +188,30 @@ Each processed document is normalized to this schema:
 docker compose -f docker-compose.dev.yml up -d
 ```
 
-### 2. Google Cloud Setup (Optional but Recommended)
-1. Create a Google Cloud project
-2. Enable APIs: Document AI, Vision AI, Natural Language AI, Vertex AI, Gmail API
-3. Create service account with appropriate permissions
-4. Download credentials JSON file
-5. Update `appsettings.json` with project details
+### 2. Start spaCy NLP Service
+```bash
+cd micros/spacy
+# Windows
+.\run.bat
 
-### 3. Run the API
+# Linux/macOS
+./run.sh
+```
+
+### 3. Run the Main API
 ```bash
 cd Server
 dotnet run
 ```
 
-### 4. Test Document Processing
+### 4. Start the Frontend (Optional)
+```bash
+cd client
+npm install
+npm run dev
+```
+
+### 5. Test Document Processing
 ```bash
 # Upload a document for processing
 curl -X POST http://localhost:5000/api/ingest \
@@ -161,10 +219,12 @@ curl -X POST http://localhost:5000/api/ingest \
   -F "notify_email=your-email@gmail.com"
 ```
 
-### 5. Monitor Processing
-- Check health: `GET /health`
+### 6. Monitor Processing
+- Main API health: `GET /health`
+- spaCy NLP service health: `GET http://localhost:5084/health`
 - View Redis queues and DLQ for job status
 - Check PostgreSQL `staging_documents` and `documents` tables
+- Frontend dashboard: `http://localhost:3000` (if running)
 
 ## 🔄 Error Handling & Reliability
 
@@ -186,7 +246,7 @@ curl -X POST http://localhost:5000/api/ingest \
 
 ## 📊 Performance Features
 
-- **Batch embedding processing** to optimize Vertex AI API usage
+- **Batch NLP processing** to optimize spaCy processing performance
 - **Connection pooling** for database and Redis
 - **Vector similarity search** with HNSW indexing via pgvector  
 - **Async processing** throughout the pipeline
@@ -194,13 +254,14 @@ curl -X POST http://localhost:5000/api/ingest \
 
 ## 🎯 Demo Flow
 
-1. **Upload** a complex PDF through the API
-2. **Monitor** job progression through Redis streams
-3. **Observe** Google Cloud APIs extract text, entities, and generate embeddings
+1. **Upload** a complex document through the API or web interface
+2. **Monitor** job progression through Redis streams and frontend dashboard
+3. **Observe** spaCy NLP service extract entities, classify content, and generate embeddings
 4. **Receive** email notification with structured summary and JSON attachment
 5. **Query** vector database for semantic similarity searches
+6. **Explore** results through the modern Next.js frontend
 
-The system showcases **"raw chaos in, structured intelligence out"** - perfect for demonstrating Google Cloud AI capabilities in a hackathon setting.
+The system showcases **"raw chaos in, structured intelligence out"** using modern microservices architecture and advanced NLP capabilities.
 
 ## 🔧 Development
 
@@ -211,18 +272,49 @@ dotnet build
 dotnet test
 ```
 
-### Client Dashboard (Optional)
+### Frontend Development
 ```bash
 cd client  
 npm install
 npm run dev
 ```
 
+### spaCy NLP Service Development
+```bash
+cd micros/spacy
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1  # Windows
+source .venv/bin/activate     # Linux/macOS
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Download spaCy model
+python -m spacy download en_core_web_sm
+
+# Run service
+python -m uvicorn app:app --host 0.0.0.0 --port 5084 --reload
+```
+
 ## 📈 Production Considerations
 
-- Configure proper Google Cloud authentication (Workload Identity)
-- Set up monitoring and alerting (Cloud Monitoring + Grafana)
-- Implement proper secret management (Azure Key Vault, etc.)
-- Configure log aggregation (Structured logging → Cloud Logging)
-- Set up backup strategies for PostgreSQL
+### Infrastructure
+- Deploy spaCy NLP service with proper containerization (Docker)
+- Set up load balancing for multiple spaCy service instances
 - Configure Redis clustering for high availability
+- Set up PostgreSQL replication and backup strategies
+- Implement proper secret management (Azure Key Vault, etc.)
+
+### Monitoring & Observability
+- Set up monitoring and alerting (Prometheus + Grafana)
+- Configure log aggregation with structured logging
+- Implement health checks for all microservices
+- Monitor NLP processing performance and accuracy
+- Track queue depths and processing latencies
+
+### Security & Performance
+- Implement proper authentication and authorization
+- Configure HTTPS/TLS for all service communications
+- Set up rate limiting and request validation
+- Optimize spaCy model loading and caching
+- Configure connection pooling for databases
