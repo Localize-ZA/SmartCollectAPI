@@ -132,10 +132,9 @@ public class IngestWorker : BackgroundService
 
                         if (pipelineResult.Success && pipelineResult.CanonicalDocument != null)
                         {
-                            // Create document record with embedding
+                            // Create document record with embedding (let Id auto-generate)
                             var document = new Document
                             {
-                                Id = job.JobId,
                                 SourceUri = job.SourceUri,
                                 Mime = job.MimeType,
                                 Sha256 = job.Sha256,

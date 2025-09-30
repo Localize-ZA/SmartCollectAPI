@@ -133,7 +133,7 @@ export function IngestForm() {
     <Card className="w-full">
       <CardHeader>
         <CardTitle>Ingest Documents</CardTitle>
-        <CardDescription>Upload multiple JSON, XML, or CSV files to be normalized by the server.</CardDescription>
+        <CardDescription>Upload multiple documents including JSON, XML, CSV, TXT, PDF, and Word files to be processed by the server.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -143,7 +143,7 @@ export function IngestForm() {
               id="files" 
               type="file" 
               multiple 
-              accept=".json,.xml,.csv,.txt"
+              accept=".json,.xml,.csv,.txt,.pdf,.doc,.docx,.md"
               onChange={handleFileSelect} 
             />
           </div>

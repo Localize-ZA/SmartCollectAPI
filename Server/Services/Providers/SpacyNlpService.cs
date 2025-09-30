@@ -207,6 +207,64 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
         }
     }
 
+    public async Task<BatchEmbeddingResult> GenerateEmbeddingsAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
+    {
+        var textList = texts.ToList();
+        if (!textList.Any())
+        {
+            return new BatchEmbeddingResult(
+                Embeddings: new List<Vector>(),
+                Success: false,
+                ErrorMessage: "No texts provided"
+            );
+        }
+
+        try
+        {
+            _logger.LogInformation("Generating embeddings for {TextCount} texts using spaCy service", textList.Count);
+
+            var embeddings = new List<Vector>();
+            var errors = new List<string>();
+
+            // Process each text individually since our spaCy service processes one document at a time
+            foreach (var text in textList)
+            {
+                var result = await GenerateEmbeddingAsync(text, cancellationToken);
+                if (result.Success)
+                {
+                    embeddings.Add(result.Embedding);
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to generate embedding for text: {Error}", result.ErrorMessage);
+                    embeddings.Add(new Vector(new float[EmbeddingDimensions])); // Add zero vector as fallback
+                    errors.Add(result.ErrorMessage ?? "Unknown error");
+                }
+            }
+
+            var hasErrors = errors.Any();
+            var errorMessage = hasErrors ? $"Errors occurred: {string.Join(", ", errors)}" : null;
+
+            _logger.LogInformation("Generated {EmbeddingCount} embeddings with {ErrorCount} errors", 
+                embeddings.Count, errors.Count);
+
+            return new BatchEmbeddingResult(
+                Embeddings: embeddings,
+                Success: !hasErrors,
+                ErrorMessage: errorMessage
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating batch embeddings");
+            return new BatchEmbeddingResult(
+                Embeddings: new List<Vector>(),
+                Success: false,
+                ErrorMessage: ex.Message
+            );
+        }
+    }
+
     // Models to deserialize spaCy responses
     private class SpacyProcessedDocument
     {
