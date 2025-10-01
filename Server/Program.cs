@@ -167,6 +167,17 @@ namespace SmartCollectAPI
                 // Register enhanced processing pipeline
                 builder.Services.AddScoped<SmartCollectAPI.Services.IDocumentProcessingPipeline, SmartCollectAPI.Services.DocumentProcessingPipeline>();
                 
+                // Register API Ingestion services
+                builder.Services.AddHttpClient("ApiIngestion", client =>
+                {
+                    client.Timeout = TimeSpan.FromMinutes(5);
+                });
+                builder.Services.AddDataProtection(); // For encrypting auth credentials
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IAuthenticationManager, SmartCollectAPI.Services.ApiIngestion.AuthenticationManager>();
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClient, SmartCollectAPI.Services.ApiIngestion.RestApiClient>();
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IDataTransformer, SmartCollectAPI.Services.ApiIngestion.DataTransformer>();
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiIngestionService, SmartCollectAPI.Services.ApiIngestion.ApiIngestionService>();
+                
                 // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
                 builder.Services.AddHostedService<SmartCollectAPI.Services.RedisDataConsumer>();

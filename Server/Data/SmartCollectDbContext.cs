@@ -13,6 +13,8 @@ public class SmartCollectDbContext : DbContext
     public DbSet<StagingDocument> StagingDocuments { get; set; } = null!;
     public DbSet<Document> Documents { get; set; } = null!;
     public DbSet<DocumentChunk> DocumentChunks { get; set; } = null!;
+    public DbSet<ApiSource> ApiSources { get; set; } = null!;
+    public DbSet<ApiIngestionLog> ApiIngestionLogs { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -86,6 +88,38 @@ public class SmartCollectDbContext : DbContext
                 .IsUnique()
                 .HasDatabaseName("unique_document_chunk");
             entity.HasIndex(e => e.DocumentId).HasDatabaseName("idx_document_chunks_document_id");
+        });
+
+        // Configure api_sources table
+        modelBuilder.Entity<ApiSource>(entity =>
+        {
+            entity.ToTable("api_sources");
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.Enabled).HasDatabaseName("idx_api_sources_enabled");
+            entity.HasIndex(e => e.NextRunAt).HasDatabaseName("idx_api_sources_next_run");
+            entity.HasIndex(e => e.ApiType).HasDatabaseName("idx_api_sources_type");
+            entity.HasIndex(e => e.LastStatus).HasDatabaseName("idx_api_sources_last_status");
+        });
+
+        // Configure api_ingestion_logs table
+        modelBuilder.Entity<ApiIngestionLog>(entity =>
+        {
+            entity.ToTable("api_ingestion_logs");
+            entity.HasKey(e => e.Id);
+            
+            // Foreign key
+            entity.HasOne(e => e.Source)
+                .WithMany(s => s.IngestionLogs)
+                .HasForeignKey(e => e.SourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            // Indexes
+            entity.HasIndex(e => e.SourceId).HasDatabaseName("idx_ingestion_logs_source_id");
+            entity.HasIndex(e => e.StartedAt).HasDatabaseName("idx_ingestion_logs_started_at");
+            entity.HasIndex(e => e.Status).HasDatabaseName("idx_ingestion_logs_status");
+            entity.HasIndex(e => new { e.SourceId, e.StartedAt }).HasDatabaseName("idx_ingestion_logs_source_started");
         });
 
         // Configure pgvector

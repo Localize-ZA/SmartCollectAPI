@@ -1,80 +1,355 @@
-# OSS-First Data Processing Pipeline Blueprint
 
-## Project Overview & Constraints
+---
 
-- Build a demonstrable end-to-end document pipeline within a short hackathon-style window.
-- Showcase an entirely open-source toolchain that runs well on Linux (containers or bare metal).
-- Keep the architecture modular so providers can be swapped without rewriting core services.
+# 🚀 Robust API Ingestion Service - Complete Architecture Plan
 
-**Focus areas:** ingestion throughput, parser coverage for common business formats, NLP enrichment, and developer ergonomics.
+## 📋 Overview
 
-## High-Level Flow
+A **scheduled background service** that fetches data from external APIs (REST, GraphQL, SOAP), transforms the data, and feeds it into your existing document processing pipeline.
 
-Client uploads a document ? ASP.NET ingest API stores it locally (or S3-compatible storage) and enqueues metadata in Redis ? .NET workers detect the content type, parse/convert via OSS providers, and call the spaCy microservice for entities + embeddings ? canonical records and vectors are upserted into Postgres/pgvector ? optional SMTP notification summarizes the results.
+---
 
-## Architecture
+## 🏗️ Architecture Design
 
-### Input Layer
-- **REST API** (ASP.NET Core minimal API) handles file uploads and JSON metadata.
-- Files land in `LocalStorageService` (disk) or an object store implementing `IStorageService`.
-- `RedisJobQueue` captures job envelopes for background workers.
+### **System Type**: Background Service (IHostedService)
+- **Location**: Within main C# API (`SmartCollectAPI.Server`)
+- **Reason**: Direct access to DocumentProcessingPipeline and database context
+- **Pattern**: Background worker with scheduled jobs
 
-### Processing Layer
-- `IngestWorker` pulls jobs, performs MIME/type detection, and orchestrates downstream providers.
-- `DocumentProcessingPipeline` coordinates parsing, enrichment, embeddings, and persistence.
-- spaCy microservice (FastAPI) delivers entity extraction, classification, sentiment, and 96-dim embeddings.
+---
 
-### Persistence Layer
-- PostgreSQL with pgvector stores staging artifacts, canonical JSON, and embeddings.
-- Redis retains transient work queues and optional DLQ streams.
+## 📊 Database Schema
 
-### Output Layer
-- `DocumentsController` exposes REST endpoints for status, canonical payloads, and similarity search.
-- `SmtpNotificationService` sends summary emails once SMTP credentials are supplied.
+### **Table 1: `api_sources`**
+```sql
+CREATE TABLE api_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    
+    -- API Configuration
+    api_type VARCHAR(50) NOT NULL, -- 'REST', 'GraphQL', 'SOAP'
+    endpoint_url TEXT NOT NULL,
+    http_method VARCHAR(10) DEFAULT 'GET', -- GET, POST, etc.
+    
+    -- Authentication
+    auth_type VARCHAR(50), -- 'None', 'Basic', 'Bearer', 'OAuth2', 'ApiKey'
+    auth_config_encrypted TEXT, -- Encrypted JSON with credentials
+    
+    -- Headers & Body
+    custom_headers JSONB, -- {"Authorization": "Bearer ...", ...}
+    request_body TEXT, -- For POST/PUT requests
+    query_params JSONB, -- {"page": "1", "limit": "100"}
+    
+    -- Data Transformation
+    response_path VARCHAR(500), -- JSONPath: "$.data.items[*]"
+    field_mappings JSONB, -- {"title": "$.headline", "content": "$.body"}
+    
+    -- Pagination
+    pagination_type VARCHAR(50), -- 'None', 'Offset', 'Cursor', 'Page'
+    pagination_config JSONB, -- {"limit": 100, "page_param": "page"}
+    
+    -- Scheduling
+    schedule_cron VARCHAR(100), -- "0 */6 * * *" (every 6 hours)
+    enabled BOOLEAN DEFAULT true,
+    
+    -- Tracking
+    last_run_at TIMESTAMPTZ,
+    next_run_at TIMESTAMPTZ,
+    last_status VARCHAR(50), -- 'success', 'failed', 'partial'
+    consecutive_failures INTEGER DEFAULT 0,
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
 
-## Provider Strategy
+### **Table 2: `api_ingestion_logs`**
+```sql
+CREATE TABLE api_ingestion_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    source_id UUID NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,
+    
+    started_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    status VARCHAR(50) NOT NULL, -- 'running', 'success', 'failed', 'partial'
+    
+    records_fetched INTEGER DEFAULT 0,
+    documents_created INTEGER DEFAULT 0,
+    errors_count INTEGER DEFAULT 0,
+    
+    error_message TEXT,
+    error_details JSONB,
+    
+    execution_time_ms INTEGER,
+    
+    INDEX idx_source_id (source_id),
+    INDEX idx_started_at (started_at)
+);
+```
 
-| Capability | Default OSS Provider | Roadmap Enhancements |
-| --- | --- | --- |
-| Document parsing | `PdfPigParser` (`OSS`) or `SimplePdfParser` (`SIMPLE`) | LibreOffice / Apache Tika bridge for Office formats |
-| OCR | `SimpleOcrService` stub | Tesseract + OpenCV-based pipeline |
-| NLP / embeddings | `SpacyNlpService` (microservice) | Larger spaCy transformer models, sentence-transformer embeddings |
-| Notifications | `SmtpNotificationService` | Optional webhook/export providers |
-| Storage | `LocalStorageService` | MinIO / S3-compatible implementation |
+---
 
-Provider choices are controlled by `ServicesOptions` in configuration so new integrations stay pluggable.
+## 🔧 Core Components
 
-## Linux-Friendly Dependencies
+### **1. API Client Interfaces**
 
-- **Parsing:** PdfPig (iText7) today; LibreOffice (via `soffice --headless`) planned for DOCX/XLSX/PPTX.
-- **OCR:** Tesseract CLI + language packs; optional `ocrmypdf` for PDF cleanup.
-- **NLP:** spaCy microservice packaged with Docker, Redis worker for async tasks.
-- **Media tooling:** `ffmpeg` + Whisper/faster-whisper for audio transcription when needed.
+```csharp
+public interface IApiClient
+{
+    Task<ApiResponse> FetchAsync(ApiSource source, CancellationToken ct);
+    Task<bool> TestConnectionAsync(ApiSource source, CancellationToken ct);
+}
 
-Package everything with Docker Compose for local dev, mirroring production Linux deployments.
+public class ApiResponse
+{
+    public bool Success { get; set; }
+    public string RawResponse { get; set; }
+    public object ParsedData { get; set; }
+    public int RecordCount { get; set; }
+    public string ErrorMessage { get; set; }
+}
+```
 
-## Implementation Checklist
+### **2. Protocol Handlers**
 
-1. Remove retired cloud-specific packages, config, and documentation (complete).
-2. Harden PdfPig parser and add LibreOffice conversion worker for Office docs.
-3. Replace `SimpleOcrService` stub with Tesseract-backed implementation.
-4. Expand spaCy sidecar to expose sentence embeddings and richer entity metadata.
-5. Wire MinIO/S3 storage provider into `IStorageService` alongside local disk.
-6. Add automated ingestion tests that cover PDFs, DOCX, CSV, images, and archives.
-7. Update docs and dashboards to highlight the OSS-first toolchain.
+```csharp
+// REST API Client
+public class RestApiClient : IApiClient
+{
+    private readonly HttpClient _httpClient;
+    private readonly ILogger<RestApiClient> _logger;
+    
+    // Supports: GET, POST, PUT, DELETE, PATCH
+    // Handles: Headers, Query Params, Request Body
+    // Features: Retry policies, timeout, compression
+}
 
-## Operational Notes
+// GraphQL Client
+public class GraphQLApiClient : IApiClient
+{
+    private readonly GraphQLHttpClient _client;
+    
+    // Supports: Queries, Mutations
+    // Features: Variable binding, fragment support
+}
 
-- Containerize supporting services (Redis, Postgres, spaCy, LibreOffice sidecars) for easy Linux deployment.
-- Centralize logging with Serilog + Seq or OpenTelemetry exporters.
-- Monitor queue depth, ingestion latency, and spaCy throughput to tune worker counts.
-- Plan for configuration-driven feature flags when experimental providers (OCR, audio) roll out.
+// SOAP Client
+public class SoapApiClient : IApiClient
+{
+    // Uses: System.ServiceModel for SOAP 1.1/1.2
+    // Features: WSDL parsing, envelope construction
+}
+```
 
-## Demo Script
+### **3. Data Transformer**
 
-1. Upload a scanned PDF and show ingestion succeeds with dedupe + queueing.
-2. Highlight parsed text, entity extraction, and embeddings retrieved via `/api/documents/{id}`.
-3. Trigger similarity search against stored documents to demonstrate pgvector integration.
-4. Show health dashboards (API + spaCy) and optional SMTP notification output.
+```csharp
+public class DataTransformer
+{
+    public List<StagingDocument> Transform(
+        ApiResponse response,
+        ApiSource source)
+    {
+        // 1. Extract records using JSONPath/XPath
+        // 2. Map fields according to configuration
+        // 3. Generate sourceUri with API identifier
+        // 4. Create StagingDocuments
+        // 5. Preserve metadata (source, fetch time)
+    }
+}
+```
 
-Delivering the above demonstrates an end-to-end OSS alternative to the previous cloud-exclusive pipeline while leaving ample room for future provider additions.
+### **4. Ingestion Scheduler (Background Service)**
+
+```csharp
+public class ApiIngestionService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<ApiIngestionService> _logger;
+    
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await CheckAndRunScheduledJobs(ct);
+            await Task.Delay(TimeSpan.FromMinutes(1), ct);
+        }
+    }
+    
+    private async Task CheckAndRunScheduledJobs(CancellationToken ct)
+    {
+        // 1. Query enabled sources with next_run_at <= NOW
+        // 2. For each source, run ingestion job
+        // 3. Update next_run_at based on cron
+        // 4. Log results
+    }
+}
+```
+
+### **5. Authentication Manager**
+
+```csharp
+public class AuthenticationManager
+{
+    private readonly IDataProtector _protector;
+    
+    public void ApplyAuthentication(
+        HttpRequestMessage request,
+        ApiSource source)
+    {
+        var decrypted = DecryptAuthConfig(source.AuthConfigEncrypted);
+        
+        switch (source.AuthType)
+        {
+            case "Basic":
+                // Add Basic Auth header
+                break;
+            case "Bearer":
+                // Add Bearer token
+                break;
+            case "OAuth2":
+                // Handle OAuth2 flow
+                break;
+            case "ApiKey":
+                // Add API key to header or query
+                break;
+        }
+    }
+}
+```
+
+---
+
+## 📅 Implementation Phases
+
+### **Phase 1: Foundation (Week 1)**
+- ✅ Database schema migration
+- ✅ Entity models (ApiSource, ApiIngestionLog)
+- ✅ REST API client with basic auth
+- ✅ Simple JSON transformation (flat objects)
+- ✅ Manual trigger endpoint for testing
+
+### **Phase 2: Scheduling (Week 2)**
+- ✅ Background service with cron scheduling
+- ✅ Automatic job execution
+- ✅ Retry policies with Polly
+- ✅ Error handling and logging
+- ✅ Email alerts for failures
+
+### **Phase 3: Advanced Protocols (Week 3)**
+- ✅ GraphQL client implementation
+- ✅ SOAP client implementation
+- ✅ Advanced transformations (nested objects, arrays)
+- ✅ Pagination support (all types)
+
+### **Phase 4: Frontend UI (Week 4)**
+- ✅ API Sources management page
+- ✅ CRUD operations for sources
+- ✅ Test connection feature
+- ✅ Manual trigger button
+- ✅ Ingestion logs viewer
+- ✅ Real-time status monitoring
+
+### **Phase 5: Advanced Features (Future)**
+- 🔄 Webhooks (receive push notifications)
+- 🔄 Incremental sync (track changes)
+- 🔄 Deduplication (avoid re-ingesting same data)
+- 🔄 Data validation rules
+- 🔄 Custom transformation scripts
+
+---
+
+## 🛠️ NuGet Packages Required
+
+```xml
+<PackageReference Include="Polly" Version="8.4.0" />
+<PackageReference Include="NCrontab" Version="3.3.3" />
+<PackageReference Include="GraphQL.Client" Version="6.1.0" />
+<PackageReference Include="GraphQL.Client.Serializer.SystemTextJson" Version="6.1.0" />
+<PackageReference Include="System.ServiceModel.Http" Version="8.0.0" />
+<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+```
+
+---
+
+## 🔐 Security Measures
+
+1. **Credential Encryption**: Use ASP.NET Core Data Protection API
+2. **HTTPS Only**: All external API calls over TLS
+3. **Certificate Validation**: Validate SSL certificates
+4. **Input Sanitization**: Clean data before document creation
+5. **Rate Limiting**: Respect external API limits
+6. **Secrets Management**: Never log credentials
+7. **IP Whitelisting**: For webhook endpoints (Phase 5)
+
+---
+
+## 📈 Monitoring & Observability
+
+- **Metrics**: Records fetched, documents created, errors
+- **Logs**: Structured logging with Serilog
+- **Alerts**: Email notifications for failures
+- **Dashboard**: Real-time ingestion status in UI
+- **History**: 90-day retention of ingestion logs
+
+---
+
+## 🎯 Example Use Cases
+
+### **Use Case 1: News API**
+```json
+{
+  "name": "NewsAPI.org",
+  "api_type": "REST",
+  "endpoint_url": "https://newsapi.org/v2/everything",
+  "auth_type": "ApiKey",
+  "auth_config": {"api_key": "YOUR_KEY"},
+  "query_params": {"q": "technology", "pageSize": 100},
+  "response_path": "$.articles[*]",
+  "field_mappings": {
+    "title": "$.title",
+    "content": "$.content",
+    "metadata": {"author": "$.author", "published": "$.publishedAt"}
+  },
+  "schedule_cron": "0 */2 * * *"
+}
+```
+
+### **Use Case 2: GitHub GraphQL API**
+```json
+{
+  "name": "GitHub Issues",
+  "api_type": "GraphQL",
+  "endpoint_url": "https://api.github.com/graphql",
+  "auth_type": "Bearer",
+  "request_body": "query { repository(owner:\"facebook\", name:\"react\") { issues(first:100) { nodes { title body } } } }",
+  "response_path": "$.data.repository.issues.nodes[*]",
+  "schedule_cron": "0 0 * * *"
+}
+```
+
+### **Use Case 3: Legacy SOAP Service**
+```json
+{
+  "name": "Enterprise Data Service",
+  "api_type": "SOAP",
+  "endpoint_url": "https://api.company.com/DataService.asmx",
+  "auth_type": "Basic",
+  "request_body": "<soap:Envelope>...</soap:Envelope>",
+  "schedule_cron": "0 6 * * *"
+}
+```
+
+---
+
+## 🚦 Implementation Priority
+
+1. **Phase 1** - Database schema and REST client (MVP)
+2. **Phase 2** - Scheduling and automation
+3. **Phase 4** - Frontend UI (parallel with Phase 3)
+4. **Phase 3** - Advanced protocols (GraphQL, SOAP)
+5. **Phase 5** - Advanced features (as needed)
+
+This is a **production-grade architecture** that integrates seamlessly with the existing SmartCollect pipeline.
