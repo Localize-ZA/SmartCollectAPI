@@ -22,7 +22,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
     {
         _httpClient = httpClient;
         _logger = logger;
-        
+
         // Configure HTTP client for spaCy service
         _httpClient.BaseAddress = new Uri(SPACY_BASE_URL);
         _httpClient.Timeout = TimeSpan.FromSeconds(30);
@@ -46,14 +46,14 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
             var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/api/v1/process", httpContent, cancellationToken);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("spaCy service returned error {StatusCode}: {Error}", response.StatusCode, errorContent);
-                
+
                 return new EntityExtractionResult(
-                    Entities: new List<ExtractedEntity>(),
+                    Entities: [],
                     Sentiment: new SentimentAnalysis(0.0f, 0.0f, "NEUTRAL"),
                     Success: false,
                     ErrorMessage: $"spaCy service error: {response.StatusCode}"
@@ -70,7 +70,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
             {
                 _logger.LogWarning("spaCy service returned null analysis");
                 return new EntityExtractionResult(
-                    Entities: new List<ExtractedEntity>(),
+                    Entities: [],
                     Sentiment: new SentimentAnalysis(0.0f, 0.0f, "NEUTRAL"),
                     Success: false,
                     ErrorMessage: "spaCy returned null analysis"
@@ -82,18 +82,18 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
                 Name: e.Text ?? "",
                 Type: e.Label ?? "UNKNOWN",
                 Salience: (double)(e.Confidence ?? 0.5f),
-                Mentions: new List<EntityMention>
-                {
-                    new EntityMention(
+                Mentions:
+                [
+                    new(
                         Text: e.Text ?? "",
                         StartOffset: 0, // spaCy doesn't provide this in our current format
                         EndOffset: (e.Text ?? "").Length
                     )
-                }
-            )).ToList() ?? new List<ExtractedEntity>();
+                ]
+            )).ToList() ?? [];
 
             // Convert spaCy sentiment
-            var sentiment = spacyResult.Analysis.Sentiment != null 
+            var sentiment = spacyResult.Analysis.Sentiment != null
                 ? new SentimentAnalysis(
                     Score: spacyResult.Analysis.Sentiment.Polarity ?? 0.0f,
                     Magnitude: Math.Abs(spacyResult.Analysis.Sentiment.Polarity ?? 0.0f),
@@ -101,7 +101,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
                 )
                 : new SentimentAnalysis(0.0f, 0.0f, "NEUTRAL");
 
-            _logger.LogInformation("spaCy extracted {EntityCount} entities with sentiment: {Sentiment}", 
+            _logger.LogInformation("spaCy extracted {EntityCount} entities with sentiment: {Sentiment}",
                 entities.Count, sentiment.Label);
 
             return new EntityExtractionResult(
@@ -115,7 +115,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
         {
             _logger.LogError(ex, "Error calling spaCy service for entity extraction");
             return new EntityExtractionResult(
-                Entities: new List<ExtractedEntity>(),
+                Entities: [],
                 Sentiment: new SentimentAnalysis(0.0f, 0.0f, "NEUTRAL"),
                 Success: false,
                 ErrorMessage: ex.Message
@@ -150,12 +150,12 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
             var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/api/v1/process", httpContent, cancellationToken);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("spaCy service returned error {StatusCode}: {Error}", response.StatusCode, errorContent);
-                
+
                 return new EmbeddingResult(
                     Embedding: new Vector(new float[EmbeddingDimensions]),
                     Success: false,
@@ -210,10 +210,10 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
     public async Task<BatchEmbeddingResult> GenerateEmbeddingsAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
         var textList = texts.ToList();
-        if (!textList.Any())
+        if (textList.Count == 0)
         {
             return new BatchEmbeddingResult(
-                Embeddings: new List<Vector>(),
+                Embeddings: [],
                 Success: false,
                 ErrorMessage: "No texts provided"
             );
@@ -242,10 +242,10 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
                 }
             }
 
-            var hasErrors = errors.Any();
+            var hasErrors = errors.Count != 0;
             var errorMessage = hasErrors ? $"Errors occurred: {string.Join(", ", errors)}" : null;
 
-            _logger.LogInformation("Generated {EmbeddingCount} embeddings with {ErrorCount} errors", 
+            _logger.LogInformation("Generated {EmbeddingCount} embeddings with {ErrorCount} errors",
                 embeddings.Count, errors.Count);
 
             return new BatchEmbeddingResult(
@@ -258,7 +258,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
         {
             _logger.LogError(ex, "Error generating batch embeddings");
             return new BatchEmbeddingResult(
-                Embeddings: new List<Vector>(),
+                Embeddings: [],
                 Success: false,
                 ErrorMessage: ex.Message
             );

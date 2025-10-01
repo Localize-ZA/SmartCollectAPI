@@ -13,42 +13,28 @@ public interface IDocumentProcessingPipeline
     Task<PipelineResult> ProcessDocumentAsync(JobEnvelope job, CancellationToken cancellationToken = default);
 }
 
-public class DocumentProcessingPipeline : IDocumentProcessingPipeline
+public class DocumentProcessingPipeline(
+    ILogger<DocumentProcessingPipeline> logger,
+    IProviderFactory providerFactory,
+    IStorageService storageService,
+    IContentDetector contentDetector,
+    IJsonParser jsonParser,
+    IXmlParser xmlParser,
+    ICsvParser csvParser,
+    ITextChunkingService chunkingService,
+    IDecisionEngine decisionEngine,
+    IEmbeddingProviderFactory embeddingProviderFactory) : IDocumentProcessingPipeline
 {
-    private readonly ILogger<DocumentProcessingPipeline> _logger;
-    private readonly IProviderFactory _providerFactory;
-    private readonly IStorageService _storageService;
-    private readonly IContentDetector _contentDetector;
-    private readonly IJsonParser _jsonParser;
-    private readonly IXmlParser _xmlParser;
-    private readonly ICsvParser _csvParser;
-    private readonly ITextChunkingService _chunkingService;
-    private readonly IDecisionEngine _decisionEngine;
-    private readonly IEmbeddingProviderFactory _embeddingProviderFactory;
-
-    public DocumentProcessingPipeline(
-        ILogger<DocumentProcessingPipeline> logger,
-        IProviderFactory providerFactory,
-        IStorageService storageService,
-        IContentDetector contentDetector,
-        IJsonParser jsonParser,
-        IXmlParser xmlParser,
-        ICsvParser csvParser,
-        ITextChunkingService chunkingService,
-        IDecisionEngine decisionEngine,
-        IEmbeddingProviderFactory embeddingProviderFactory)
-    {
-        _logger = logger;
-        _providerFactory = providerFactory;
-        _storageService = storageService;
-        _contentDetector = contentDetector;
-        _jsonParser = jsonParser;
-        _xmlParser = xmlParser;
-        _csvParser = csvParser;
-        _chunkingService = chunkingService;
-        _decisionEngine = decisionEngine;
-        _embeddingProviderFactory = embeddingProviderFactory;
-    }
+    private readonly ILogger<DocumentProcessingPipeline> _logger = logger;
+    private readonly IProviderFactory _providerFactory = providerFactory;
+    private readonly IStorageService _storageService = storageService;
+    private readonly IContentDetector _contentDetector = contentDetector;
+    private readonly IJsonParser _jsonParser = jsonParser;
+    private readonly IXmlParser _xmlParser = xmlParser;
+    private readonly ICsvParser _csvParser = csvParser;
+    private readonly ITextChunkingService _chunkingService = chunkingService;
+    private readonly IDecisionEngine _decisionEngine = decisionEngine;
+    private readonly IEmbeddingProviderFactory _embeddingProviderFactory = embeddingProviderFactory;
 
     public async Task<PipelineResult> ProcessDocumentAsync(JobEnvelope job, CancellationToken cancellationToken = default)
     {
@@ -59,7 +45,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             // Step 1: Load the document - for now, we'll use direct file access since IStorageService doesn't have Load method
             var localPath = job.SourceUri;
             var absPath = Path.IsPathRooted(localPath) ? localPath : Path.Combine(AppContext.BaseDirectory, localPath);
-            
+
             if (!File.Exists(absPath))
             {
                 throw new FileNotFoundException($"Source file not found: {absPath}");
@@ -67,7 +53,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
             await using var fileStream = File.OpenRead(absPath);
             var fileInfo = new FileInfo(absPath);
-            
+
             // Step 2: Detect content type if needed
             var detectedMimeType = job.MimeType;
             if (string.IsNullOrWhiteSpace(detectedMimeType) || detectedMimeType == "application/octet-stream")
@@ -115,7 +101,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 processingPlan.EstimatedCost);
 
             // Log decision reasons for audit trail
-            if (processingPlan.DecisionReasons != null && processingPlan.DecisionReasons.Any())
+            if (processingPlan.DecisionReasons != null && processingPlan.DecisionReasons.Count != 0)
             {
                 _logger.LogInformation("Decision reasons: {Reasons}", string.Join("; ", processingPlan.DecisionReasons));
             }
@@ -138,20 +124,20 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             List<TextChunk>? chunks = null;
             if (!string.IsNullOrWhiteSpace(extractedText) && extractedText.Length > 2000)
             {
-                _logger.LogInformation("Chunking text ({Length} chars) using strategy: {Strategy}, size: {Size}, overlap: {Overlap}", 
+                _logger.LogInformation("Chunking text ({Length} chars) using strategy: {Strategy}, size: {Size}, overlap: {Overlap}",
                     extractedText.Length, processingPlan.ChunkingStrategy, processingPlan.ChunkSize, processingPlan.ChunkOverlap);
-                
+
                 // Parse the chunking strategy from the plan
                 var strategy = Enum.TryParse<ChunkingStrategy>(processingPlan.ChunkingStrategy, ignoreCase: true, out var parsedStrategy)
                     ? parsedStrategy
                     : ChunkingStrategy.SlidingWindow;
-                
+
                 var chunkingOptions = new ChunkingOptions(
                     MaxTokens: processingPlan.ChunkSize,
                     OverlapTokens: processingPlan.ChunkOverlap,
                     Strategy: strategy
                 );
-                
+
                 chunks = _chunkingService.ChunkText(extractedText, chunkingOptions);
                 _logger.LogInformation("Created {ChunkCount} chunks from document", chunks.Count);
             }
@@ -165,23 +151,23 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to get embedding provider {Provider}, falling back to default", 
+                _logger.LogWarning(ex, "Failed to get embedding provider {Provider}, falling back to default",
                     processingPlan.EmbeddingProvider);
                 embeddingService = _embeddingProviderFactory.GetDefaultProvider();
             }
 
             EmbeddingResult embeddingResult;
             List<ChunkEmbedding>? chunkEmbeddings = null;
-            
-            if (chunks != null && chunks.Any())
+
+            if (chunks != null && chunks.Count != 0)
             {
                 // Generate embeddings for each chunk
-                chunkEmbeddings = new List<ChunkEmbedding>();
-                
+                chunkEmbeddings = [];
+
                 foreach (var chunk in chunks)
                 {
                     var chunkEmbedding = await embeddingService.GenerateEmbeddingAsync(chunk.Content, cancellationToken);
-                    
+
                     if (chunkEmbedding.Success)
                     {
                         chunkEmbeddings.Add(new ChunkEmbedding(
@@ -194,10 +180,10 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                         ));
                     }
                 }
-                
-                _logger.LogInformation("Generated embeddings for {Count} chunks using {Provider}", 
+
+                _logger.LogInformation("Generated embeddings for {Count} chunks using {Provider}",
                     chunkEmbeddings.Count, processingPlan.EmbeddingProvider);
-                
+
                 // Compute mean-of-chunks as document-level embedding
                 if (chunkEmbeddings.Count > 0 && chunkEmbeddings[0].Embedding != null)
                 {
@@ -291,7 +277,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         documentStream.Position = 0;
         using var reader = new StreamReader(documentStream);
         var text = await reader.ReadToEndAsync(cancellationToken);
-        
+
         return new DocumentParseResult(
             ExtractedText: text,
             Success: true,
@@ -410,7 +396,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             Embedding = embeddingResult.Success ? embeddingResult.Embedding?.ToArray() : null,
             EmbeddingDim = embeddingResult.Success ? _providerFactory.GetEmbeddingService().EmbeddingDimensions : 0,
             ProcessingStatus = parseResult.Success && embeddingResult.Success ? "processed" : "failed",
-            ProcessingErrors = !parseResult.Success || !embeddingResult.Success ? 
+            ProcessingErrors = !parseResult.Success || !embeddingResult.Success ?
                 JsonNode.Parse(JsonSerializer.Serialize(new
                 {
                     parse_error = parseResult.ErrorMessage,
@@ -428,10 +414,10 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         try
         {
             var notificationService = _providerFactory.GetNotificationService();
-            
+
             var subject = $"Document Processing Complete: {Path.GetFileName(job.SourceUri)}";
             var body = CreateNotificationBody(canonicalDoc);
-            
+
             var attachments = new List<NotificationAttachment>
             {
                 new(
@@ -483,8 +469,8 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             {(entityCount > 0 ? $@"
             <h3>Top Entities</h3>
             <ul>
-                {string.Join("", doc.Entities?.AsArray()?.Take(5).Select(e => 
-                    $"<li><strong>{e?["name"]?.ToString()}</strong> ({e?["type"]?.ToString()}) - Salience: {e?["salience"]?.ToString()}</li>") ?? new string[0])}
+                {string.Join("", doc.Entities?.AsArray()?.Take(5).Select(e =>
+                    $"<li><strong>{e?["name"]?.ToString()}</strong> ({e?["type"]?.ToString()}) - Salience: {e?["salience"]?.ToString()}</li>") ?? Array.Empty<string>())}
             </ul>" : "")}
 
             <p>The complete processing results are attached as JSON.</p>
@@ -507,7 +493,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
     private static bool IsImage(string mimeType)
     {
-        return mimeType.ToLowerInvariant().StartsWith("image/");
+        return mimeType.StartsWith("image/", StringComparison.InvariantCultureIgnoreCase);
     }
 
     private static string SanitizeText(string? text)
@@ -565,7 +551,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         const int maxTokens = 8000; // Leave some buffer
         if (textToEmbed.Length > maxTokens * 4)
         {
-            textToEmbed = textToEmbed.Substring(0, maxTokens * 4);
+            textToEmbed = textToEmbed[..(maxTokens * 4)];
         }
 
         return textToEmbed;
@@ -583,12 +569,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         }
 
         // Get dimensions from first chunk
-        var firstEmbedding = chunkEmbeddings[0].Embedding;
-        if (firstEmbedding == null)
-        {
-            throw new ArgumentException("First chunk has no embedding", nameof(chunkEmbeddings));
-        }
-
+        var firstEmbedding = chunkEmbeddings[0].Embedding ?? throw new ArgumentException("First chunk has no embedding", nameof(chunkEmbeddings));
         var dims = firstEmbedding.ToArray().Length;
         var sum = new float[dims];
 

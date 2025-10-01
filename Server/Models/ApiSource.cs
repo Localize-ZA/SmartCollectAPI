@@ -132,5 +132,5 @@ public class ApiSource
     public string? CreatedBy { get; set; }
 
     // Navigation property
-    public ICollection<ApiIngestionLog> IngestionLogs { get; set; } = new List<ApiIngestionLog>();
+    public ICollection<ApiIngestionLog> IngestionLogs { get; set; } = [];
 }

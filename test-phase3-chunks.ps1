@@ -1,7 +1,7 @@
 # Phase 3: Mean-of-Chunks Test Script
 # Tests chunk storage, search, and mean-of-chunks embedding
 
-$baseUrl = "http://localhost:5000"
+$baseUrl = "http://localhost:5082"
 $apiUrl = "$baseUrl/api"
 
 Write-Host "========================================" -ForegroundColor Cyan

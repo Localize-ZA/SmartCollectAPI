@@ -15,7 +15,7 @@ public class SimpleContentDetector : IContentDetector
         // Read up to first 4KB for sniffing
         var max = (int)Math.Min(4096, stream.Length - stream.Position);
         var buffer = new byte[max];
-        var read = await stream.ReadAsync(buffer, 0, buffer.Length, ct);
+        var read = await stream.ReadAsync(buffer, ct);
         if (stream.CanSeek) stream.Position -= read;
 
         // Magic bytes checks
@@ -31,11 +31,11 @@ public class SimpleContentDetector : IContentDetector
 
         // Get full sample for better detection
         var sample = Encoding.UTF8.GetString(buffer, 0, read);
-        
+
         // Check for markdown indicators
-        if (sample.Contains("# ") || sample.Contains("## ") || sample.Contains("### ") || 
+        if (sample.Contains("# ") || sample.Contains("## ") || sample.Contains("### ") ||
             sample.Contains("```") || sample.Contains("---") || sample.Contains("* ") ||
-            sample.Contains("- ") || sample.Contains("[") && sample.Contains("]("))
+            sample.Contains("- ") || sample.Contains('[') && sample.Contains("]("))
         {
             return "text/markdown";
         }

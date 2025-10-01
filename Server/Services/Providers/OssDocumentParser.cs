@@ -4,26 +4,19 @@ using Microsoft.Extensions.Logging;
 
 namespace SmartCollectAPI.Services.Providers;
 
-public class OssDocumentParser : IAdvancedDocumentParser
+public class OssDocumentParser(
+    ILogger<OssDocumentParser> logger,
+    PdfPigParser pdfParser,
+    ILibreOfficeConversionService conversionService) : IAdvancedDocumentParser
 {
-    private readonly ILogger<OssDocumentParser> _logger;
-    private readonly PdfPigParser _pdfParser;
-    private readonly ILibreOfficeConversionService _conversionService;
+    private readonly ILogger<OssDocumentParser> _logger = logger;
+    private readonly PdfPigParser _pdfParser = pdfParser;
+    private readonly ILibreOfficeConversionService _conversionService = conversionService;
 
     private static readonly HashSet<string> _pdfMimeTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "application/pdf"
     };
-
-    public OssDocumentParser(
-        ILogger<OssDocumentParser> logger,
-        PdfPigParser pdfParser,
-        ILibreOfficeConversionService conversionService)
-    {
-        _logger = logger;
-        _pdfParser = pdfParser;
-        _conversionService = conversionService;
-    }
 
     public bool CanHandle(string mimeType)
     {
@@ -54,7 +47,7 @@ public class OssDocumentParser : IAdvancedDocumentParser
                 {
                     _logger.LogInformation("Converted {MimeType} to PDF using LibreOffice. Delegating to PdfPig parser.", mimeType);
                     var parseResult = await _pdfParser.ParseAsync(convertedStream, "application/pdf", cancellationToken);
-                    var metadata = parseResult.Metadata ?? new Dictionary<string, object>();
+                    var metadata = parseResult.Metadata ?? [];
                     metadata["convertedFrom"] = normalized;
                     metadata["conversionTool"] = "LibreOffice";
                     metadata["originalMimeType"] = normalized;
@@ -77,9 +70,9 @@ public class OssDocumentParser : IAdvancedDocumentParser
 
         return new DocumentParseResult(
             ExtractedText: fallbackText,
-            Entities: new List<ExtractedEntity>(),
-            Tables: new List<ExtractedTable>(),
-            Sections: new List<DocumentSection>(),
+            Entities: [],
+            Tables: [],
+            Sections: [],
             Metadata: metadataFallback,
             Success: true,
             ErrorMessage: null

@@ -4,12 +4,8 @@ using Pgvector.EntityFrameworkCore;
 
 namespace SmartCollectAPI.Data;
 
-public class SmartCollectDbContext : DbContext
+public class SmartCollectDbContext(DbContextOptions<SmartCollectDbContext> options) : DbContext(options)
 {
-    public SmartCollectDbContext(DbContextOptions<SmartCollectDbContext> options) : base(options)
-    {
-    }
-
     public DbSet<StagingDocument> StagingDocuments { get; set; } = null!;
     public DbSet<Document> Documents { get; set; } = null!;
     public DbSet<DocumentChunk> DocumentChunks { get; set; } = null!;
@@ -98,7 +94,7 @@ public class SmartCollectDbContext : DbContext
         {
             entity.ToTable("api_sources");
             entity.HasKey(e => e.Id);
-            
+
             // Indexes
             entity.HasIndex(e => e.Enabled).HasDatabaseName("idx_api_sources_enabled");
             entity.HasIndex(e => e.NextRunAt).HasDatabaseName("idx_api_sources_next_run");
@@ -114,13 +110,13 @@ public class SmartCollectDbContext : DbContext
         {
             entity.ToTable("api_ingestion_logs");
             entity.HasKey(e => e.Id);
-            
+
             // Foreign key
             entity.HasOne(e => e.Source)
                 .WithMany(s => s.IngestionLogs)
                 .HasForeignKey(e => e.SourceId)
                 .OnDelete(DeleteBehavior.Cascade);
-            
+
             // Indexes
             entity.HasIndex(e => e.SourceId).HasDatabaseName("idx_ingestion_logs_source_id");
             entity.HasIndex(e => e.StartedAt).HasDatabaseName("idx_ingestion_logs_started_at");

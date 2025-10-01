@@ -18,10 +18,10 @@ public class LibreOfficeOptions
     public int TimeoutSeconds { get; set; } = 90;
 }
 
-public class LibreOfficeConversionService : ILibreOfficeConversionService
+public class LibreOfficeConversionService(ILogger<LibreOfficeConversionService> logger, IOptions<LibreOfficeOptions> options) : ILibreOfficeConversionService
 {
-    private readonly ILogger<LibreOfficeConversionService> _logger;
-    private readonly LibreOfficeOptions _options;
+    private readonly ILogger<LibreOfficeConversionService> _logger = logger;
+    private readonly LibreOfficeOptions _options = options.Value;
 
     private static readonly Dictionary<string, string> _mimeToExtension = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -40,12 +40,6 @@ public class LibreOfficeConversionService : ILibreOfficeConversionService
         ["application/vnd.oasis.opendocument.spreadsheet"] = ".ods",
         ["application/vnd.oasis.opendocument.presentation"] = ".odp"
     };
-
-    public LibreOfficeConversionService(ILogger<LibreOfficeConversionService> logger, IOptions<LibreOfficeOptions> options)
-    {
-        _logger = logger;
-        _options = options.Value;
-    }
 
     public bool IsEnabled => _options.Enabled;
 
@@ -144,8 +138,8 @@ public class LibreOfficeConversionService : ILibreOfficeConversionService
                 throw new TimeoutException($"LibreOffice conversion timed out after {timeout.TotalSeconds} seconds.");
             }
 
-            var stderr = await process.StandardError.ReadToEndAsync();
-            var stdout = await process.StandardOutput.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
 
             if (process.ExitCode != 0)
             {
@@ -164,8 +158,10 @@ public class LibreOfficeConversionService : ILibreOfficeConversionService
             _logger.LogInformation("LibreOffice conversion produced {OutputPath}.", outputPath);
 
             var pdfBytes = await File.ReadAllBytesAsync(outputPath, cancellationToken);
-            var memoryStream = new MemoryStream(pdfBytes, writable: false);
-            memoryStream.Position = 0;
+            var memoryStream = new MemoryStream(pdfBytes, writable: false)
+            {
+                Position = 0
+            };
             return memoryStream;
         }
         catch (Exception ex) when (ex is not OperationCanceledException && ex is not TimeoutException)

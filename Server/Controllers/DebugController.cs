@@ -9,16 +9,10 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DebugController : ControllerBase
+public class DebugController(SmartCollectDbContext context, ILogger<DebugController> logger) : ControllerBase
 {
-    private readonly SmartCollectDbContext _context;
-    private readonly ILogger<DebugController> _logger;
-
-    public DebugController(SmartCollectDbContext context, ILogger<DebugController> logger)
-    {
-        _context = context;
-        _logger = logger;
-    }
+    private readonly SmartCollectDbContext _context = context;
+    private readonly ILogger<DebugController> _logger = logger;
 
     [HttpPost("migrate-stuck-documents")]
     public async Task<IActionResult> MigrateStuckDocuments()
@@ -52,14 +46,14 @@ public class DebugController : ControllerBase
                     var canonicalJson = stagingDoc.Normalized?.ToJsonString();
                     if (string.IsNullOrEmpty(canonicalJson))
                     {
-                        results.Add(new { StagingId = stagingDoc.Id, JobId = stagingDoc.JobId, Error = "No normalized data found" });
+                        results.Add(new { StagingId = stagingDoc.Id, stagingDoc.JobId, Error = "No normalized data found" });
                         continue;
                     }
 
                     var canonical = JsonSerializer.Deserialize<CanonicalDocument>(canonicalJson);
                     if (canonical == null)
                     {
-                        results.Add(new { StagingId = stagingDoc.Id, JobId = stagingDoc.JobId, Error = "Failed to deserialize canonical document" });
+                        results.Add(new { StagingId = stagingDoc.Id, stagingDoc.JobId, Error = "Failed to deserialize canonical document" });
                         continue;
                     }
 
@@ -94,12 +88,13 @@ public class DebugController : ControllerBase
                     _context.Documents.Add(document);
                     await _context.SaveChangesAsync();
 
-                    results.Add(new { 
-                        StagingId = stagingDoc.Id, 
-                        JobId = stagingDoc.JobId, 
-                        Success = true, 
+                    results.Add(new
+                    {
+                        StagingId = stagingDoc.Id,
+                        stagingDoc.JobId,
+                        Success = true,
                         HasEmbedding = document.Embedding != null,
-                        EmbeddingDim = canonical.EmbeddingDim
+                        canonical.EmbeddingDim
                     });
 
                     _logger.LogInformation("Successfully migrated document {JobId}", stagingDoc.JobId);
@@ -107,9 +102,10 @@ public class DebugController : ControllerBase
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to migrate document {JobId}", stagingDoc.JobId);
-                    results.Add(new { 
-                        StagingId = stagingDoc.Id, 
-                        JobId = stagingDoc.JobId, 
+                    results.Add(new
+                    {
+                        StagingId = stagingDoc.Id,
+                        stagingDoc.JobId,
                         Error = ex.Message,
                         ExceptionType = ex.GetType().Name
                     });

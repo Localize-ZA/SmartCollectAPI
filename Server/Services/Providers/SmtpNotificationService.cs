@@ -6,16 +6,10 @@ using System.Net.Mime;
 
 namespace SmartCollectAPI.Services.Providers;
 
-public class SmtpNotificationService : INotificationService
+public class SmtpNotificationService(ILogger<SmtpNotificationService> logger, IOptions<SmtpOptions> options) : INotificationService
 {
-    private readonly ILogger<SmtpNotificationService> _logger;
-    private readonly SmtpOptions _options;
-
-    public SmtpNotificationService(ILogger<SmtpNotificationService> logger, IOptions<SmtpOptions> options)
-    {
-        _logger = logger;
-        _options = options.Value;
-    }
+    private readonly ILogger<SmtpNotificationService> _logger = logger;
+    private readonly SmtpOptions _options = options.Value;
 
     public async Task<NotificationResult> SendNotificationAsync(NotificationRequest request, CancellationToken cancellationToken = default)
     {
@@ -29,7 +23,7 @@ public class SmtpNotificationService : INotificationService
                 );
             }
 
-            _logger.LogInformation("Sending email notification via SMTP to {ToEmail} with subject: {Subject}", 
+            _logger.LogInformation("Sending email notification via SMTP to {ToEmail} with subject: {Subject}",
                 request.ToEmail, request.Subject);
 
             using var smtpClient = new SmtpClient(_options.Host, _options.Port)
@@ -51,9 +45,9 @@ public class SmtpNotificationService : INotificationService
 
             // Add attachments
             List<MemoryStream>? attachmentStreams = null;
-            if (request.Attachments != null && request.Attachments.Any())
+            if (request.Attachments != null && request.Attachments.Count != 0)
             {
-                attachmentStreams = new List<MemoryStream>();
+                attachmentStreams = [];
                 foreach (var attachment in request.Attachments)
                 {
                     var stream = new MemoryStream(attachment.Content);
@@ -63,7 +57,7 @@ public class SmtpNotificationService : INotificationService
                 }
             }
 
-            await smtpClient.SendMailAsync(mailMessage);
+            await smtpClient.SendMailAsync(mailMessage, cancellationToken);
 
             // Dispose attachment streams after sending the email
             if (attachmentStreams != null)

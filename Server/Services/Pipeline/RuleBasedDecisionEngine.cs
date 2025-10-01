@@ -7,14 +7,9 @@ namespace SmartCollectAPI.Services.Pipeline;
 /// Rule-based implementation of IDecisionEngine.
 /// Uses heuristics and rules to determine optimal processing strategies.
 /// </summary>
-public class RuleBasedDecisionEngine : IDecisionEngine
+public partial class RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> logger) : IDecisionEngine
 {
-    private readonly ILogger<RuleBasedDecisionEngine> _logger;
-
-    public RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger<RuleBasedDecisionEngine> _logger = logger;
 
     public async Task<PipelinePlan> GeneratePlanAsync(
         string fileName,
@@ -42,7 +37,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         plan.DecisionReasons.Add($"Document type: {plan.DocumentType}");
 
         // Rule 3: Choose chunking strategy based on document type
-        (plan.ChunkingStrategy, plan.ChunkSize, plan.ChunkOverlap) = 
+        (plan.ChunkingStrategy, plan.ChunkSize, plan.ChunkOverlap) =
             DetermineChunkingStrategy(plan.DocumentType, fileSize, contentPreview);
         plan.DecisionReasons.Add(
             $"Chunking: {plan.ChunkingStrategy} (size: {plan.ChunkSize}, overlap: {plan.ChunkOverlap})");
@@ -73,7 +68,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         }
 
         // Rule 9: Enable reranking for large, important documents
-        plan.UseReranking = fileSize > 100_000 && 
+        plan.UseReranking = fileSize > 100_000 &&
                            (plan.Priority == "high" || plan.Priority == "critical");
         if (plan.UseReranking)
         {
@@ -94,8 +89,8 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         if (document.Normalized != null)
         {
             var normalizedText = document.Normalized.ToJsonString();
-            contentPreview = normalizedText.Length > 2000 
-                ? normalizedText[..2000] 
+            contentPreview = normalizedText.Length > 2000
+                ? normalizedText[..2000]
                 : normalizedText;
         }
 
@@ -116,18 +111,18 @@ public class RuleBasedDecisionEngine : IDecisionEngine
             metadata);
     }
 
-    private bool DetermineOCRRequirement(string mimeType, string extension)
+    private static bool DetermineOCRRequirement(string mimeType, string extension)
     {
         // Images and scanned PDFs need OCR
         if (mimeType.StartsWith("image/")) return true;
-        
+
         // PDFs might need OCR (we'll determine this later in processing)
         if (mimeType == "application/pdf" || extension == ".pdf") return false; // Let PDF parser decide
-        
+
         return false;
     }
 
-    private string DetermineDocumentType(string fileName, string mimeType, string extension, string? contentPreview)
+    private static string DetermineDocumentType(string fileName, string mimeType, string extension, string? contentPreview)
     {
         // Code files
         if (extension is ".cs" or ".js" or ".ts" or ".py" or ".java" or ".cpp" or ".html" or ".css")
@@ -146,7 +141,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
             return "tabular";
 
         // Legal/contracts (heuristic based on content)
-        if (contentPreview != null && 
+        if (contentPreview != null &&
             (contentPreview.Contains("WHEREAS", StringComparison.OrdinalIgnoreCase) ||
              contentPreview.Contains("hereinafter", StringComparison.OrdinalIgnoreCase) ||
              contentPreview.Contains("agreement", StringComparison.OrdinalIgnoreCase)))
@@ -170,7 +165,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         return "general";
     }
 
-    private (string strategy, int size, int overlap) DetermineChunkingStrategy(
+    private static (string strategy, int size, int overlap) DetermineChunkingStrategy(
         string? documentType, long fileSize, string? contentPreview)
     {
         return documentType switch
@@ -186,7 +181,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         };
     }
 
-    private string DetermineEmbeddingProvider(string? documentType, long fileSize, Dictionary<string, object>? metadata)
+    private static string DetermineEmbeddingProvider(string? documentType, long fileSize, Dictionary<string, object>? metadata)
     {
         // Check for explicit provider in metadata
         if (metadata?.ContainsKey("embeddingProvider") == true)
@@ -199,7 +194,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         // - Legal/medical -> OpenAI (highest quality)
         // - Large documents -> spaCy (faster, lower dimensional)
         // - Multilingual -> Cohere
-        
+
         return documentType switch
         {
             "legal" => "sentence-transformers", // Could be "openai" if budget allows
@@ -209,7 +204,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         };
     }
 
-    private bool DetermineNERRequirement(string? documentType, long fileSize)
+    private static bool DetermineNERRequirement(string? documentType, long fileSize)
     {
         // Enable NER for documents that typically contain entities
         return documentType switch
@@ -223,7 +218,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         };
     }
 
-    private string DeterminePriority(long fileSize, string? documentType)
+    private static string DeterminePriority(long fileSize, string? documentType)
     {
         // Small files = high priority (quick to process)
         if (fileSize < 50_000) return "high";
@@ -237,7 +232,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         return "normal";
     }
 
-    private decimal EstimateProcessingCost(PipelinePlan plan)
+    private static decimal EstimateProcessingCost(PipelinePlan plan)
     {
         decimal cost = 0;
 
@@ -263,7 +258,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         return cost;
     }
 
-    private string DetectLanguage(string? contentPreview)
+    private static string DetectLanguage(string? contentPreview)
     {
         if (string.IsNullOrEmpty(contentPreview)) return "en";
 
@@ -271,7 +266,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
         // TODO: Replace with proper language detection service in Phase 2
 
         // Check for common non-English characters
-        if (Regex.IsMatch(contentPreview, @"[\u4E00-\u9FFF]")) return "zh"; // Chinese
+        if (MyRegex().IsMatch(contentPreview)) return "zh"; // Chinese
         if (Regex.IsMatch(contentPreview, @"[\u0400-\u04FF]")) return "ru"; // Russian
         if (Regex.IsMatch(contentPreview, @"[\u0600-\u06FF]")) return "ar"; // Arabic
         if (Regex.IsMatch(contentPreview, @"[\u3040-\u309F]")) return "ja"; // Japanese hiragana
@@ -285,4 +280,7 @@ public class RuleBasedDecisionEngine : IDecisionEngine
 
         return "en"; // Default to English
     }
+
+    [GeneratedRegex(@"[\u4E00-\u9FFF]")]
+    private static partial Regex MyRegex();
 }

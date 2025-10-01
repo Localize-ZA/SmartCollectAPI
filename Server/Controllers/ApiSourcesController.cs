@@ -9,33 +9,22 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/sources")]
-public class ApiSourcesController : ControllerBase
+public class ApiSourcesController(
+    SmartCollectDbContext context,
+    ILogger<ApiSourcesController> logger,
+    IAuthenticationManager authManager,
+    IApiClient apiClient,
+    IDataTransformer transformer,
+    IApiIngestionService ingestionService,
+    ISecretCryptoService crypto) : ControllerBase
 {
-    private readonly SmartCollectDbContext _context;
-    private readonly ILogger<ApiSourcesController> _logger;
-    private readonly IAuthenticationManager _authManager;
-    private readonly IApiClient _apiClient;
-    private readonly IDataTransformer _transformer;
-    private readonly IApiIngestionService _ingestionService;
-    private readonly ISecretCryptoService _crypto;
-
-    public ApiSourcesController(
-        SmartCollectDbContext context,
-        ILogger<ApiSourcesController> logger,
-        IAuthenticationManager authManager,
-        IApiClient apiClient,
-        IDataTransformer transformer,
-        IApiIngestionService ingestionService,
-        ISecretCryptoService crypto)
-    {
-        _context = context;
-        _logger = logger;
-        _authManager = authManager;
-        _apiClient = apiClient;
-        _transformer = transformer;
-        _ingestionService = ingestionService;
-        _crypto = crypto;
-    }
+    private readonly SmartCollectDbContext _context = context;
+    private readonly ILogger<ApiSourcesController> _logger = logger;
+    private readonly IAuthenticationManager _authManager = authManager;
+    private readonly IApiClient _apiClient = apiClient;
+    private readonly IDataTransformer _transformer = transformer;
+    private readonly IApiIngestionService _ingestionService = ingestionService;
+    private readonly ISecretCryptoService _crypto = crypto;
 
     /// <summary>
     /// Get all API sources
@@ -428,7 +417,7 @@ public class ApiSourcesController : ControllerBase
         }
     }
 
-    private ApiSourceDto MapToDto(ApiSource source, bool includeSecrets = false)
+    private static ApiSourceDto MapToDto(ApiSource source, bool includeSecrets = false)
     {
         return new ApiSourceDto
         {
@@ -609,6 +598,6 @@ public class TriggerIngestionResultDto
     public int DocumentsFailed { get; set; }
     public long ExecutionTimeMs { get; set; }
     public string? ErrorMessage { get; set; }
-    public List<string> Warnings { get; set; } = new();
+    public List<string> Warnings { get; set; } = [];
     public DateTime TriggeredAt { get; set; }
 }

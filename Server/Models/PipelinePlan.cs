@@ -64,10 +64,10 @@ public class PipelinePlan
     /// <summary>
     /// Reasoning behind the plan decisions (for debugging/auditing)
     /// </summary>
-    public List<string> DecisionReasons { get; set; } = new();
+    public List<string> DecisionReasons { get; set; } = [];
 
     /// <summary>
     /// Additional metadata for the plan
     /// </summary>
-    public Dictionary<string, object> Metadata { get; set; } = new();
+    public Dictionary<string, object> Metadata { get; set; } = [];
 }

@@ -15,28 +15,20 @@ public interface IAuthenticationManager
     Dictionary<string, string> DecryptCredentials(string encryptedCredentials);
 }
 
-public class AuthenticationManager : IAuthenticationManager
+public class AuthenticationManager(
+    IDataProtectionProvider dataProtectionProvider,
+    ILogger<AuthenticationManager> logger,
+    ISecretCryptoService crypto,
+    SmartCollectDbContext db) : IAuthenticationManager
 {
-    private readonly IDataProtector _protector;
-    private readonly ILogger<AuthenticationManager> _logger;
-    private readonly ISecretCryptoService _crypto;
-    private readonly SmartCollectDbContext _db;
-
-    public AuthenticationManager(
-        IDataProtectionProvider dataProtectionProvider,
-        ILogger<AuthenticationManager> logger,
-        ISecretCryptoService crypto,
-        SmartCollectDbContext db)
-    {
-        _protector = dataProtectionProvider.CreateProtector("ApiIngestion.AuthConfig");
-        _logger = logger;
-        _crypto = crypto;
-        _db = db;
-    }
+    private readonly IDataProtector _protector = dataProtectionProvider.CreateProtector("ApiIngestion.AuthConfig");
+    private readonly ILogger<AuthenticationManager> _logger = logger;
+    private readonly ISecretCryptoService _crypto = crypto;
+    private readonly SmartCollectDbContext _db = db;
 
     public async Task ApplyAuthenticationAsync(
-        HttpRequestMessage request, 
-        ApiSource source, 
+        HttpRequestMessage request,
+        ApiSource source,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(source.AuthType) || source.AuthType.Equals("None", StringComparison.OrdinalIgnoreCase))
@@ -46,7 +38,7 @@ public class AuthenticationManager : IAuthenticationManager
 
         if (string.IsNullOrEmpty(source.AuthConfigEncrypted))
         {
-            _logger.LogWarning("Auth type {AuthType} specified but no auth config provided for source {SourceName}", 
+            _logger.LogWarning("Auth type {AuthType} specified but no auth config provided for source {SourceName}",
                 source.AuthType, source.Name);
             return;
         }
@@ -94,8 +86,8 @@ public class AuthenticationManager : IAuthenticationManager
     public Dictionary<string, string> DecryptCredentials(string encryptedCredentials)
     {
         var json = _protector.Unprotect(encryptedCredentials);
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(json) 
-            ?? new Dictionary<string, string>();
+        return JsonSerializer.Deserialize<Dictionary<string, string>>(json)
+            ?? [];
     }
 
     private void ApplyBasicAuth(HttpRequestMessage request, Dictionary<string, string> authConfig)
@@ -126,11 +118,10 @@ public class AuthenticationManager : IAuthenticationManager
 
     private async Task ApplyApiKeyAuthAsync(HttpRequestMessage request, ApiSource source, Dictionary<string, string> legacyAuthConfig, CancellationToken cancellationToken)
     {
-        string? apiKey = null;
         string location;
-        string? headerName = null;
-        string? queryParam = null;
-
+        string? apiKey;
+        string? headerName;
+        string? queryParam;
         // Prefer structured encrypted fields
         if (source.HasApiKey && source.ApiKeyCiphertext != null && source.ApiKeyIv != null && source.ApiKeyTag != null && source.KeyVersion.HasValue)
         {
@@ -179,8 +170,8 @@ public class AuthenticationManager : IAuthenticationManager
     }
 
     private async Task ApplyOAuth2Async(
-        HttpRequestMessage request, 
-        Dictionary<string, string> authConfig, 
+        HttpRequestMessage request,
+        Dictionary<string, string> authConfig,
         CancellationToken cancellationToken)
     {
         // For now, OAuth2 requires a pre-obtained access token

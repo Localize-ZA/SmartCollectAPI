@@ -9,32 +9,25 @@ namespace SmartCollectAPI.Services;
 /// <summary>
 /// Service that listens for mock data on Redis streams/channels and processes it through the document pipeline
 /// </summary>
-public class RedisDataConsumer : BackgroundService
+public class RedisDataConsumer(
+    IConnectionMultiplexer redis,
+    IJobQueue jobQueue,
+    ILogger<RedisDataConsumer> logger,
+    IServiceScopeFactory scopeFactory) : BackgroundService
 {
-    private readonly IConnectionMultiplexer _redis;
-    private readonly IJobQueue _jobQueue;
-    private readonly ILogger<RedisDataConsumer> _logger;
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConnectionMultiplexer _redis = redis;
+    private readonly IJobQueue _jobQueue = jobQueue;
+    private readonly ILogger<RedisDataConsumer> _logger = logger;
+    private readonly IServiceScopeFactory _scopeFactory = scopeFactory;
     private const string MockDataStreamName = "mock-data-stream";
     private const string ConsumerGroupName = "smart-collect-processors";
     private const string ConsumerName = "data-processor-1";
-
-    public RedisDataConsumer(
-        IConnectionMultiplexer redis,
-        IJobQueue jobQueue,
-        ILogger<RedisDataConsumer> logger,
-        IServiceScopeFactory scopeFactory)
-    {
-        _redis = redis;
-        _jobQueue = jobQueue;
-        _logger = logger;
-        _scopeFactory = scopeFactory;
-    }
+    private static readonly string[] sourceArray = new[] { "content", "data", "text", "body", "message", "payload" };
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Redis Data Consumer started, listening for mock data on stream: {StreamName}", MockDataStreamName);
-        
+
         await EnsureConsumerGroupExists();
 
         while (!stoppingToken.IsCancellationRequested)
@@ -56,7 +49,7 @@ public class RedisDataConsumer : BackgroundService
         try
         {
             var db = _redis.GetDatabase();
-            
+
             // Try to create the consumer group, ignore if it already exists
             await db.StreamCreateConsumerGroupAsync(MockDataStreamName, ConsumerGroupName, "0-0", createStream: true);
             _logger.LogInformation("Consumer group {GroupName} created/ensured for stream {StreamName}", ConsumerGroupName, MockDataStreamName);
@@ -98,7 +91,7 @@ public class RedisDataConsumer : BackgroundService
             try
             {
                 await ProcessSingleMessage(entry, stoppingToken);
-                
+
                 // Acknowledge the message after successful processing
                 await db.StreamAcknowledgeAsync(MockDataStreamName, ConsumerGroupName, entry.Id);
                 _logger.LogDebug("Acknowledged message {MessageId} from Redis stream", entry.Id);
@@ -135,7 +128,7 @@ public class RedisDataConsumer : BackgroundService
 
         // Convert content to bytes for the pipeline
         var contentBytes = Encoding.UTF8.GetBytes(content);
-        
+
         // Create job envelope similar to file upload process
         var jobId = Guid.NewGuid();
         var sha256 = ComputeSha256(contentBytes);
@@ -145,8 +138,8 @@ public class RedisDataConsumer : BackgroundService
 
         // Store the content temporarily (similar to file upload)
         var tempPath = await storageService.SaveAsync(
-            new MemoryStream(contentBytes), 
-            mockFileName, 
+            new MemoryStream(contentBytes),
+            mockFileName,
             stoppingToken);
 
         var jobEnvelope = new JobEnvelope(
@@ -161,8 +154,8 @@ public class RedisDataConsumer : BackgroundService
 
         // Enqueue for processing through the existing pipeline
         await _jobQueue.EnqueueAsync(jobEnvelope, stoppingToken);
-        
-        _logger.LogInformation("Successfully enqueued Redis data from message {MessageId} as job {JobId}", 
+
+        _logger.LogInformation("Successfully enqueued Redis data from message {MessageId} as job {JobId}",
             messageId, jobId);
     }
 
@@ -170,7 +163,7 @@ public class RedisDataConsumer : BackgroundService
     {
         // Try various common field names for content
         var contentFields = new[] { "content", "data", "text", "body", "message", "payload" };
-        
+
         foreach (var field in contentFields)
         {
             if (values.TryGetValue(field, out var content) && !string.IsNullOrWhiteSpace(content))
@@ -201,14 +194,14 @@ public class RedisDataConsumer : BackgroundService
         return string.Empty;
     }
 
-    private Dictionary<string, object> ExtractMetadata(Dictionary<string, string> values)
+    private static Dictionary<string, object> ExtractMetadata(Dictionary<string, string> values)
     {
         var metadata = new Dictionary<string, object>();
 
         foreach (var (key, value) in values)
         {
             // Skip content fields, include everything else as metadata
-            if (!new[] { "content", "data", "text", "body", "message", "payload" }.Contains(key.ToLower()))
+            if (!sourceArray.Contains(key.ToLower()))
             {
                 metadata[key] = value;
             }
@@ -217,10 +210,10 @@ public class RedisDataConsumer : BackgroundService
         return metadata;
     }
 
-    private string DetermineContentType(Dictionary<string, string> values, string content)
+    private static string DetermineContentType(Dictionary<string, string> values, string content)
     {
         // Check if content type is explicitly provided
-        if (values.TryGetValue("content_type", out var explicitType) || 
+        if (values.TryGetValue("content_type", out var explicitType) ||
             values.TryGetValue("mime_type", out explicitType) ||
             values.TryGetValue("type", out explicitType))
         {
@@ -248,7 +241,7 @@ public class RedisDataConsumer : BackgroundService
         {
             return "application/json";
         }
-        
+
         if (content.TrimStart().StartsWith("<"))
         {
             return "application/xml";
@@ -265,8 +258,7 @@ public class RedisDataConsumer : BackgroundService
 
     private static string ComputeSha256(byte[] data)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hash = sha256.ComputeHash(data);
+        var hash = System.Security.Cryptography.SHA256.HashData(data);
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

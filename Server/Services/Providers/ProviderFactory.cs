@@ -13,18 +13,11 @@ public interface IProviderFactory
     INotificationService GetNotificationService();
 }
 
-public class ProviderFactory : IProviderFactory
+public class ProviderFactory(IServiceProvider serviceProvider, IOptions<ServicesOptions> options, ILogger<ProviderFactory> logger) : IProviderFactory
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ServicesOptions _options;
-    private readonly ILogger<ProviderFactory> _logger;
-
-    public ProviderFactory(IServiceProvider serviceProvider, IOptions<ServicesOptions> options, ILogger<ProviderFactory> logger)
-    {
-        _serviceProvider = serviceProvider;
-        _options = options.Value;
-        _logger = logger;
-    }
+    private readonly IServiceProvider _serviceProvider = serviceProvider;
+    private readonly ServicesOptions _options = options.Value;
+    private readonly ILogger<ProviderFactory> _logger = logger;
 
     public IAdvancedDocumentParser GetDocumentParser()
     {

@@ -136,25 +136,25 @@ namespace SmartCollectAPI
                     return StackExchange.Redis.ConnectionMultiplexer.Connect(options);
                 });
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJobQueue, SmartCollectAPI.Services.RedisJobQueue>();
-                
+
                 // Register basic services (still needed for structured data parsing)
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IContentDetector, SmartCollectAPI.Services.SimpleContentDetector>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJsonParser, SmartCollectAPI.Services.JsonParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ITextChunkingService, SmartCollectAPI.Services.TextChunkingService>();
-                
+
                 // Register OSS conversion and document parsing services
                 builder.Services.AddSingleton<ILibreOfficeConversionService, LibreOfficeConversionService>();
                 builder.Services.AddScoped<OssDocumentParser>();
                 builder.Services.AddScoped<PdfPigParser>(); // Advanced PDF parser (iText7 engine)
                 builder.Services.AddScoped<SmtpNotificationService>();
-                
+
                 // Register OCR services
                 builder.Services.AddScoped<TesseractOcrService>(); // Fallback OCR
                 builder.Services.AddHttpClient<EasyOcrService>(); // Primary OCR - Deep learning
                 builder.Services.AddScoped<EasyOcrService>();
-                
+
                 // Register NLP and embedding services  
                 builder.Services.AddHttpClient<SpacyNlpService>(); // Entity extraction + 300-dim embeddings
                 builder.Services.AddScoped<SpacyNlpService>();
@@ -167,7 +167,7 @@ namespace SmartCollectAPI
 
                 // Register enhanced processing pipeline
                 builder.Services.AddScoped<SmartCollectAPI.Services.IDocumentProcessingPipeline, SmartCollectAPI.Services.DocumentProcessingPipeline>();
-                
+
                 // Register API Ingestion services
                 builder.Services.AddHttpClient("ApiIngestion", client =>
                 {
@@ -179,13 +179,13 @@ namespace SmartCollectAPI
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClient, SmartCollectAPI.Services.ApiIngestion.RestApiClient>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IDataTransformer, SmartCollectAPI.Services.ApiIngestion.DataTransformer>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiIngestionService, SmartCollectAPI.Services.ApiIngestion.ApiIngestionService>();
-                
+
                 // Register Decision Engine (Phase 1)
                 builder.Services.AddScoped<SmartCollectAPI.Services.Pipeline.IDecisionEngine, SmartCollectAPI.Services.Pipeline.RuleBasedDecisionEngine>();
-                
+
                 // Register Chunk Search Service (Phase 3)
                 builder.Services.AddScoped<SmartCollectAPI.Services.IChunkSearchService, SmartCollectAPI.Services.ChunkSearchService>();
-                
+
                 // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
                 builder.Services.AddHostedService<SmartCollectAPI.Services.RedisDataConsumer>();
@@ -306,8 +306,8 @@ namespace SmartCollectAPI
                 var form = await request.ReadFormAsync(ct);
                 var files = form.Files.Where(f => f.Name == "files" && f.Length > 0).ToList();
                 var notify = form["notify_email"].FirstOrDefault();
-                
-                if (!files.Any())
+
+                if (files.Count == 0)
                 {
                     return Results.BadRequest(new { error = "at least one file is required" });
                 }
@@ -339,23 +339,26 @@ namespace SmartCollectAPI
                             await queue.EnqueueAsync(job, ct);
                         }
 
-                        results.Add(new { 
+                        results.Add(new
+                        {
                             fileName = file.FileName,
-                            job_id = job.JobId, 
-                            sha256 = sha, 
-                            source_uri = savedPath 
+                            job_id = job.JobId,
+                            sha256 = sha,
+                            source_uri = savedPath
                         });
                     }
                     catch (Exception ex)
                     {
-                        errors.Add(new { 
-                            fileName = file.FileName, 
-                            error = ex.Message 
+                        errors.Add(new
+                        {
+                            fileName = file.FileName,
+                            error = ex.Message
                         });
                     }
                 }
 
-                return Results.Accepted("/api/jobs/bulk", new { 
+                return Results.Accepted("/api/jobs/bulk", new
+                {
                     results,
                     errors,
                     totalFiles = files.Count,

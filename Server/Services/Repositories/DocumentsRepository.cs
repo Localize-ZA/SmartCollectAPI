@@ -4,14 +4,9 @@ using Npgsql;
 
 namespace SmartCollectAPI.Services.Repositories;
 
-public class DocumentsRepository : IDocumentsRepository
+public class DocumentsRepository(NpgsqlDataSource dataSource) : IDocumentsRepository
 {
-    private readonly NpgsqlDataSource _dataSource;
-
-    public DocumentsRepository(NpgsqlDataSource dataSource)
-    {
-        _dataSource = dataSource;
-    }
+    private readonly NpgsqlDataSource _dataSource = dataSource;
 
     public async Task<Guid> UpsertAsync(string sourceUri, string? mime, string? sha256, JsonNode canonical, CancellationToken ct)
     {

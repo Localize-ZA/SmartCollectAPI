@@ -7,21 +7,14 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ChunkSearchController : ControllerBase
+public class ChunkSearchController(
+    IChunkSearchService chunkSearchService,
+    IEmbeddingProviderFactory embeddingProviderFactory,
+    ILogger<ChunkSearchController> logger) : ControllerBase
 {
-    private readonly IChunkSearchService _chunkSearchService;
-    private readonly IEmbeddingProviderFactory _embeddingProviderFactory;
-    private readonly ILogger<ChunkSearchController> _logger;
-
-    public ChunkSearchController(
-        IChunkSearchService chunkSearchService,
-        IEmbeddingProviderFactory embeddingProviderFactory,
-        ILogger<ChunkSearchController> logger)
-    {
-        _chunkSearchService = chunkSearchService;
-        _embeddingProviderFactory = embeddingProviderFactory;
-        _logger = logger;
-    }
+    private readonly IChunkSearchService _chunkSearchService = chunkSearchService;
+    private readonly IEmbeddingProviderFactory _embeddingProviderFactory = embeddingProviderFactory;
+    private readonly ILogger<ChunkSearchController> _logger = logger;
 
     /// <summary>
     /// Search chunks by semantic similarity
@@ -31,7 +24,7 @@ public class ChunkSearchController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("Chunk search request: query='{Query}', limit={Limit}", 
+            _logger.LogInformation("Chunk search request: query='{Query}', limit={Limit}",
                 request.Query, request.Limit);
 
             // Generate embedding for the query using specified or default provider
@@ -40,7 +33,7 @@ public class ChunkSearchController : ControllerBase
                 : _embeddingProviderFactory.GetProvider(request.Provider);
 
             var embeddingResult = await embeddingService.GenerateEmbeddingAsync(request.Query);
-            
+
             if (!embeddingResult.Success || embeddingResult.Embedding == null)
             {
                 return BadRequest(new { error = "Failed to generate embedding for query" });
@@ -76,7 +69,7 @@ public class ChunkSearchController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("Hybrid search request: query='{Query}', limit={Limit}", 
+            _logger.LogInformation("Hybrid search request: query='{Query}', limit={Limit}",
                 request.Query, request.Limit);
 
             // Generate embedding for the query
@@ -85,7 +78,7 @@ public class ChunkSearchController : ControllerBase
                 : _embeddingProviderFactory.GetProvider(request.Provider);
 
             var embeddingResult = await embeddingService.GenerateEmbeddingAsync(request.Query);
-            
+
             if (!embeddingResult.Success || embeddingResult.Embedding == null)
             {
                 return BadRequest(new { error = "Failed to generate embedding for query" });
@@ -157,7 +150,7 @@ public class ChunkSearchResponse
     public string Query { get; set; } = string.Empty;
     public string Provider { get; set; } = string.Empty;
     public int ResultCount { get; set; }
-    public List<ChunkSearchResult> Results { get; set; } = new();
+    public List<ChunkSearchResult> Results { get; set; } = [];
 }
 
 public class HybridSearchRequest
@@ -175,12 +168,12 @@ public class HybridSearchResponse
     public int SemanticResultCount { get; set; }
     public int TextResultCount { get; set; }
     public int TotalUniqueResults { get; set; }
-    public List<ChunkSearchResult> Results { get; set; } = new();
+    public List<ChunkSearchResult> Results { get; set; } = [];
 }
 
 public class DocumentChunksResponse
 {
     public Guid DocumentId { get; set; }
     public int ChunkCount { get; set; }
-    public List<ChunkSearchResult> Chunks { get; set; } = new();
+    public List<ChunkSearchResult> Chunks { get; set; } = [];
 }

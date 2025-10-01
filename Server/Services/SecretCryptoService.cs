@@ -52,19 +52,14 @@ public class SecretCryptoService : ISecretCryptoService
 
     public SecretCipher Encrypt(string plaintext)
     {
-        if (plaintext == null) throw new ArgumentNullException(nameof(plaintext));
+        ArgumentNullException.ThrowIfNull(plaintext);
         byte[]? pt = null;
-        byte[]? ct = null;
-        byte[]? iv = null;
-        byte[]? tag = null;
-
         try
         {
             pt = Encoding.UTF8.GetBytes(plaintext);
-            ct = new byte[pt.Length];
-            iv = RandomNumberGenerator.GetBytes(12); // 96-bit nonce recommended for GCM
-            tag = new byte[16]; // 128-bit tag
-
+            byte[]? ct = new byte[pt.Length];
+            byte[]? iv = RandomNumberGenerator.GetBytes(12);
+            byte[]? tag = new byte[16];
             using var aes = new AesGcm(_masterKey, 16);
             aes.Encrypt(iv, pt, ct, tag);
 
@@ -80,9 +75,9 @@ public class SecretCryptoService : ISecretCryptoService
     {
         // For rotation support, version dispatch could be added here.
         // Currently we support only the current master key version.
-        if (ciphertext == null) throw new ArgumentNullException(nameof(ciphertext));
-        if (iv == null) throw new ArgumentNullException(nameof(iv));
-        if (tag == null) throw new ArgumentNullException(nameof(tag));
+        ArgumentNullException.ThrowIfNull(ciphertext);
+        ArgumentNullException.ThrowIfNull(iv);
+        ArgumentNullException.ThrowIfNull(tag);
 
         byte[]? pt = null;
         try

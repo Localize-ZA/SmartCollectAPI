@@ -23,7 +23,7 @@ public class SentenceTransformerService : IEmbeddingService
     {
         _httpClient = httpClient;
         _logger = logger;
-        
+
         // Configure HTTP client for sentence-transformers service
         _httpClient.BaseAddress = new Uri(EMBEDDING_BASE_URL);
         _httpClient.Timeout = TimeSpan.FromSeconds(30);
@@ -49,7 +49,7 @@ public class SentenceTransformerService : IEmbeddingService
             if (text.Length > maxChars)
             {
                 _logger.LogWarning("Text too long ({Length} chars), truncating to {MaxChars}", text.Length, maxChars);
-                text = text.Substring(0, maxChars);
+                text = text[..maxChars];
             }
 
             var request = new EmbeddingRequest
@@ -62,13 +62,13 @@ public class SentenceTransformerService : IEmbeddingService
             var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/api/v1/embed/single", httpContent, cancellationToken);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Sentence-transformers service returned error {StatusCode}: {Error}", 
+                _logger.LogError("Sentence-transformers service returned error {StatusCode}: {Error}",
                     response.StatusCode, errorContent);
-                
+
                 return new EmbeddingResult(
                     Embedding: new Vector(new float[EmbeddingDimensions]),
                     Success: false,
@@ -94,7 +94,7 @@ public class SentenceTransformerService : IEmbeddingService
 
             if (embeddingResponse.Embedding == null || embeddingResponse.Embedding.Count != EmbeddingDimensions)
             {
-                _logger.LogError("Unexpected embedding dimensions: {Actual} vs {Expected}", 
+                _logger.LogError("Unexpected embedding dimensions: {Actual} vs {Expected}",
                     embeddingResponse.Embedding?.Count ?? 0, EmbeddingDimensions);
                 return new EmbeddingResult(
                     Embedding: new Vector(new float[EmbeddingDimensions]),
@@ -103,7 +103,7 @@ public class SentenceTransformerService : IEmbeddingService
                 );
             }
 
-            _logger.LogInformation("Generated {Dimensions}-dimensional embedding using {Model}", 
+            _logger.LogInformation("Generated {Dimensions}-dimensional embedding using {Model}",
                 embeddingResponse.Dimensions, embeddingResponse.Model);
 
             return new EmbeddingResult(
@@ -126,10 +126,10 @@ public class SentenceTransformerService : IEmbeddingService
         try
         {
             var textList = texts.ToList();
-            if (!textList.Any())
+            if (textList.Count == 0)
             {
                 return new BatchEmbeddingResult(
-                    Embeddings: new List<Vector>(),
+                    Embeddings: [],
                     Success: true
                 );
             }
@@ -138,8 +138,8 @@ public class SentenceTransformerService : IEmbeddingService
 
             // Truncate texts if needed
             var maxChars = MaxTokens * 4;
-            var processedTexts = textList.Select(t => 
-                t.Length > maxChars ? t.Substring(0, maxChars) : t
+            var processedTexts = textList.Select(t =>
+                t.Length > maxChars ? t[..maxChars] : t
             ).ToList();
 
             var request = new BatchEmbeddingRequest
@@ -153,15 +153,15 @@ public class SentenceTransformerService : IEmbeddingService
             var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync("/api/v1/embed/batch", httpContent, cancellationToken);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Sentence-transformers batch service returned error {StatusCode}: {Error}", 
+                _logger.LogError("Sentence-transformers batch service returned error {StatusCode}: {Error}",
                     response.StatusCode, errorContent);
-                
+
                 return new BatchEmbeddingResult(
-                    Embeddings: new List<Vector>(),
+                    Embeddings: [],
                     Success: false,
                     ErrorMessage: $"Embedding service error: {response.StatusCode}"
                 );
@@ -177,7 +177,7 @@ public class SentenceTransformerService : IEmbeddingService
             {
                 _logger.LogWarning("Sentence-transformers batch service returned unsuccessful result");
                 return new BatchEmbeddingResult(
-                    Embeddings: new List<Vector>(),
+                    Embeddings: [],
                     Success: false,
                     ErrorMessage: embeddingResponse?.ErrorMessage ?? "Unknown error"
                 );
@@ -185,9 +185,9 @@ public class SentenceTransformerService : IEmbeddingService
 
             var embeddings = embeddingResponse.Embeddings?
                 .Select(e => new Vector(e.ToArray()))
-                .ToList() ?? new List<Vector>();
+                .ToList() ?? [];
 
-            _logger.LogInformation("Generated {Count} embeddings using {Model}", 
+            _logger.LogInformation("Generated {Count} embeddings using {Model}",
                 embeddings.Count, embeddingResponse.Model);
 
             return new BatchEmbeddingResult(
@@ -199,7 +199,7 @@ public class SentenceTransformerService : IEmbeddingService
         {
             _logger.LogError(ex, "Error calling sentence-transformers batch service");
             return new BatchEmbeddingResult(
-                Embeddings: new List<Vector>(),
+                Embeddings: [],
                 Success: false,
                 ErrorMessage: ex.Message
             );
@@ -220,7 +220,7 @@ internal class EmbeddingRequest
 internal class BatchEmbeddingRequest
 {
     [JsonPropertyName("texts")]
-    public List<string> Texts { get; set; } = new();
+    public List<string> Texts { get; set; } = [];
 
     [JsonPropertyName("normalize")]
     public bool Normalize { get; set; } = true;

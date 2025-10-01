@@ -12,11 +12,11 @@ public interface IChunkSearchService
         int limit = 10,
         float similarityThreshold = 0.7f,
         CancellationToken cancellationToken = default);
-    
+
     Task<List<ChunkSearchResult>> SearchChunksByDocumentAsync(
         Guid documentId,
         CancellationToken cancellationToken = default);
-    
+
     Task<HybridSearchResult> HybridSearchAsync(
         Vector queryEmbedding,
         string? queryText = null,
@@ -25,16 +25,10 @@ public interface IChunkSearchService
         CancellationToken cancellationToken = default);
 }
 
-public class ChunkSearchService : IChunkSearchService
+public class ChunkSearchService(SmartCollectDbContext dbContext, ILogger<ChunkSearchService> logger) : IChunkSearchService
 {
-    private readonly SmartCollectDbContext _dbContext;
-    private readonly ILogger<ChunkSearchService> _logger;
-
-    public ChunkSearchService(SmartCollectDbContext dbContext, ILogger<ChunkSearchService> logger)
-    {
-        _dbContext = dbContext;
-        _logger = logger;
-    }
+    private readonly SmartCollectDbContext _dbContext = dbContext;
+    private readonly ILogger<ChunkSearchService> _logger = logger;
 
     public async Task<List<ChunkSearchResult>> SearchChunksBySimilarityAsync(
         Vector queryEmbedding,
@@ -42,7 +36,7 @@ public class ChunkSearchService : IChunkSearchService
         float similarityThreshold = 0.7f,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Searching chunks by similarity (limit={Limit}, threshold={Threshold})", 
+        _logger.LogInformation("Searching chunks by similarity (limit={Limit}, threshold={Threshold})",
             limit, similarityThreshold);
 
         // Fetch all chunks with embeddings and compute similarity in memory
@@ -51,7 +45,7 @@ public class ChunkSearchService : IChunkSearchService
             .Where(dc => dc.Embedding != null)
             .Take(1000) // Limit to prevent memory issues
             .ToListAsync(cancellationToken);
-        
+
         // Compute cosine distance in memory
         var results = allChunks
             .Select(dc => new
@@ -132,9 +126,9 @@ public class ChunkSearchService : IChunkSearchService
 
         // Semantic search results
         var semanticResults = await SearchChunksBySimilarityAsync(
-            queryEmbedding, 
+            queryEmbedding,
             limit * 2, // Get more for merging
-            similarityThreshold, 
+            similarityThreshold,
             cancellationToken);
 
         List<ChunkSearchResult>? textResults = null;
@@ -153,7 +147,7 @@ public class ChunkSearchService : IChunkSearchService
                     limit * 2)
                 .ToListAsync(cancellationToken);
 
-            textResults = new List<ChunkSearchResult>();
+            textResults = [];
             foreach (var chunk in textMatches)
             {
                 var document = await _dbContext.Documents
@@ -177,7 +171,7 @@ public class ChunkSearchService : IChunkSearchService
 
         // Merge and rank results (simple approach: combine unique chunks)
         var mergedResults = new Dictionary<int, ChunkSearchResult>();
-        
+
         // Add semantic results first (higher priority)
         foreach (var result in semanticResults)
         {
@@ -198,7 +192,7 @@ public class ChunkSearchService : IChunkSearchService
             .Take(limit)
             .ToList();
 
-        _logger.LogInformation("Hybrid search found {Count} results (semantic={SemanticCount}, text={TextCount})", 
+        _logger.LogInformation("Hybrid search found {Count} results (semantic={SemanticCount}, text={TextCount})",
             finalResults.Count, semanticResults.Count, textResults?.Count ?? 0);
 
         return new HybridSearchResult
@@ -214,27 +208,27 @@ public class ChunkSearchService : IChunkSearchService
     {
         var arrayA = a.ToArray();
         var arrayB = b.ToArray();
-        
+
         if (arrayA.Length != arrayB.Length)
             throw new ArgumentException("Vectors must have the same dimensions");
-        
+
         float dotProduct = 0;
         float normA = 0;
         float normB = 0;
-        
+
         for (int i = 0; i < arrayA.Length; i++)
         {
             dotProduct += arrayA[i] * arrayB[i];
             normA += arrayA[i] * arrayA[i];
             normB += arrayB[i] * arrayB[i];
         }
-        
+
         normA = (float)Math.Sqrt(normA);
         normB = (float)Math.Sqrt(normB);
-        
+
         if (normA == 0 || normB == 0)
             return 1.0f; // Maximum distance
-        
+
         float cosineSimilarity = dotProduct / (normA * normB);
         return 1.0f - cosineSimilarity; // Convert to distance
     }
@@ -256,7 +250,7 @@ public class ChunkSearchResult
 
 public class HybridSearchResult
 {
-    public List<ChunkSearchResult> Results { get; set; } = new();
+    public List<ChunkSearchResult> Results { get; set; } = [];
     public int SemanticResultCount { get; set; }
     public int TextResultCount { get; set; }
     public int TotalUniqueResults { get; set; }

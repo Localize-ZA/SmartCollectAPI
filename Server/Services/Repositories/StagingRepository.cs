@@ -4,14 +4,9 @@ using Npgsql;
 
 namespace SmartCollectAPI.Services.Repositories;
 
-public class StagingRepository : IStagingRepository
+public class StagingRepository(NpgsqlDataSource dataSource) : IStagingRepository
 {
-    private readonly NpgsqlDataSource _dataSource;
-
-    public StagingRepository(NpgsqlDataSource dataSource)
-    {
-        _dataSource = dataSource;
-    }
+    private readonly NpgsqlDataSource _dataSource = dataSource;
 
     public async Task<Guid> InsertAsync(string jobId, string sourceUri, string? mime, string? sha256, JsonNode? rawMetadata, string status, CancellationToken ct)
     {

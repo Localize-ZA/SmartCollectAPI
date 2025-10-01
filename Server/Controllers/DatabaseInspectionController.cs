@@ -6,14 +6,9 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DatabaseInspectionController : ControllerBase
+public class DatabaseInspectionController(SmartCollectDbContext context) : ControllerBase
 {
-    private readonly SmartCollectDbContext _context;
-
-    public DatabaseInspectionController(SmartCollectDbContext context)
-    {
-        _context = context;
-    }
+    private readonly SmartCollectDbContext _context = context;
 
     [HttpGet("staging-vs-final")]
     public async Task<IActionResult> GetStagingVsFinalComparison()
@@ -23,7 +18,7 @@ public class DatabaseInspectionController : ControllerBase
         var stagingDoneCount = await _context.StagingDocuments.CountAsync(d => d.Status == "done");
         var stagingFailedCount = await _context.StagingDocuments.CountAsync(d => d.Status == "failed");
         var stagingPendingCount = await _context.StagingDocuments.CountAsync(d => d.Status == "pending");
-        
+
         return Ok(new
         {
             StagingCount = stagingCount,
@@ -97,7 +92,7 @@ public class DatabaseInspectionController : ControllerBase
                 HasNormalized = d.Normalized != null
             })
             .ToListAsync();
-        
+
         return Ok(new
         {
             FailedCount = failedDocs.Count,
@@ -121,7 +116,7 @@ public class DatabaseInspectionController : ControllerBase
                 d.UpdatedAt
             })
             .ToListAsync();
-        
+
         return Ok(new
         {
             PendingCount = pendingDocs.Count,
@@ -135,11 +130,11 @@ public class DatabaseInspectionController : ControllerBase
         var stagingDone = await _context.StagingDocuments
             .Where(d => d.Status == "done")
             .ToListAsync();
-        
+
         var finalDocIds = await _context.Documents
             .Select(d => d.Id)
             .ToListAsync();
-        
+
         var notMigratedDocs = stagingDone
             .Where(d => Guid.TryParse(d.JobId, out var jobGuid) && !finalDocIds.Contains(jobGuid))
             .Select(d => new
@@ -154,7 +149,7 @@ public class DatabaseInspectionController : ControllerBase
                 HasNormalized = d.Normalized != null
             })
             .ToList();
-        
+
         return Ok(new
         {
             DoneButNotMigratedCount = notMigratedDocs.Count,
@@ -167,7 +162,7 @@ public class DatabaseInspectionController : ControllerBase
     {
         var stagingDoneCount = await _context.StagingDocuments.CountAsync(d => d.Status == "done");
         var finalDocsCount = await _context.Documents.CountAsync();
-        
+
         return Ok(new
         {
             TotalStagingDone = stagingDoneCount,

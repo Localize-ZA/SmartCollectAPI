@@ -17,10 +17,10 @@ public class TesseractOptions
     public int? PageSegmentationMode { get; set; }
 }
 
-public class TesseractOcrService : IOcrService
+public class TesseractOcrService(ILogger<TesseractOcrService> logger, IOptions<TesseractOptions> options) : IOcrService
 {
-    private readonly ILogger<TesseractOcrService> _logger;
-    private readonly TesseractOptions _options;
+    private readonly ILogger<TesseractOcrService> _logger = logger;
+    private readonly TesseractOptions _options = options.Value;
 
     private static readonly Dictionary<string, string> _mimeToExtension = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -33,12 +33,6 @@ public class TesseractOcrService : IOcrService
         ["image/tif"] = ".tif",
         ["application/pdf"] = ".pdf"
     };
-
-    public TesseractOcrService(ILogger<TesseractOcrService> logger, IOptions<TesseractOptions> options)
-    {
-        _logger = logger;
-        _options = options.Value;
-    }
 
     public bool CanHandle(string mimeType)
     {
@@ -143,8 +137,8 @@ public class TesseractOcrService : IOcrService
                 throw new TimeoutException($"Tesseract OCR timed out after {timeout.TotalSeconds} seconds.");
             }
 
-            var stderr = await process.StandardError.ReadToEndAsync();
-            var stdout = await process.StandardOutput.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
+            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
 
             if (process.ExitCode != 0)
             {
@@ -161,8 +155,8 @@ public class TesseractOcrService : IOcrService
 
             return new OcrResult(
                 ExtractedText: text,
-                Annotations: new List<TextAnnotation>(),
-                Objects: new List<DetectedObject>(),
+                Annotations: [],
+                Objects: [],
                 Success: true,
                 ErrorMessage: null
             );

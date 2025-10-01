@@ -9,23 +9,17 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DocumentsController : ControllerBase
+public class DocumentsController(ILogger<DocumentsController> logger, SmartCollectDbContext context) : ControllerBase
 {
-    private readonly ILogger<DocumentsController> _logger;
-    private readonly SmartCollectDbContext _context;
-
-    public DocumentsController(ILogger<DocumentsController> logger, SmartCollectDbContext context)
-    {
-        _logger = logger;
-        _context = context;
-    }
+    private readonly ILogger<DocumentsController> _logger = logger;
+    private readonly SmartCollectDbContext _context = context;
 
     /// <summary>
     /// Get all processed documents with pagination
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<PagedResult<DocumentSummary>>> GetDocuments(
-        [FromQuery] int page = 1, 
+        [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
@@ -108,7 +102,7 @@ public class DocumentsController : ControllerBase
     {
         var totalDocuments = await _context.Documents.CountAsync(cancellationToken);
         var documentsWithEmbeddings = await _context.Documents.CountAsync(d => d.Embedding != null, cancellationToken);
-        
+
         var stagingStats = await _context.StagingDocuments
             .GroupBy(sd => sd.Status)
             .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -212,10 +206,10 @@ public class DocumentsController : ControllerBase
             ORDER BY embedding <-> @embedding
             LIMIT @limit;", conn);
 
-    cmd.Parameters.AddWithValue("id", id);
-    var embeddingParameter = new NpgsqlParameter<Vector>("embedding", source.Embedding);
-    cmd.Parameters.Add(embeddingParameter);
-    cmd.Parameters.AddWithValue("limit", limit);
+        cmd.Parameters.AddWithValue("id", id);
+        var embeddingParameter = new NpgsqlParameter<Vector>("embedding", source.Embedding);
+        cmd.Parameters.Add(embeddingParameter);
+        cmd.Parameters.AddWithValue("limit", limit);
 
         var results = new List<DocumentSummary>();
 
@@ -306,10 +300,10 @@ public class DocumentsController : ControllerBase
             // For now, return success and log the request
             var streamName = "mock-data-stream";
             var messageId = $"api-{Guid.NewGuid()}";
-            
-            _logger.LogInformation("Received mock data for Redis processing: Content='{Content}', Type='{ContentType}', Filename='{Filename}'", 
-                request.Content.Substring(0, Math.Min(100, request.Content.Length)), 
-                request.ContentType ?? "text/plain", 
+
+            _logger.LogInformation("Received mock data for Redis processing: Content='{Content}', Type='{ContentType}', Filename='{Filename}'",
+                request.Content[..Math.Min(100, request.Content.Length)],
+                request.ContentType ?? "text/plain",
                 request.Filename ?? "mock-data.txt");
 
             var result = new
@@ -342,13 +336,13 @@ public class DocumentsController : ControllerBase
             .Select(d => new { d.Id, d.Mime, d.CreatedAt, d.Embedding })
             .ToListAsync(cancellationToken);
 
-        if (!documentsWithVectors.Any())
+        if (documentsWithVectors.Count == 0)
         {
             return Ok(new VectorAnalysis
             {
                 TotalDocumentsWithVectors = 0,
                 AverageDimensions = 0,
-                MimeTypeDistribution = new Dictionary<string, int>(),
+                MimeTypeDistribution = [],
                 DimensionStats = null
             });
         }
@@ -388,7 +382,7 @@ public record DocumentSummary
 
 public record PagedResult<T>
 {
-    public List<T> Items { get; init; } = new();
+    public List<T> Items { get; init; } = [];
     public int TotalCount { get; init; }
     public int Page { get; init; }
     public int PageSize { get; init; }
@@ -400,7 +394,7 @@ public record ProcessingStats
     public int TotalDocuments { get; init; }
     public int DocumentsWithEmbeddings { get; init; }
     public int ProcessedToday { get; init; }
-    public Dictionary<string, int> StagingStatus { get; init; } = new();
+    public Dictionary<string, int> StagingStatus { get; init; } = [];
 }
 
 public record SearchRequest
@@ -437,7 +431,7 @@ public record VectorAnalysis
 {
     public int TotalDocumentsWithVectors { get; init; }
     public double AverageDimensions { get; init; }
-    public Dictionary<string, int> MimeTypeDistribution { get; init; } = new();
+    public Dictionary<string, int> MimeTypeDistribution { get; init; } = [];
     public DimensionStats? DimensionStats { get; init; }
 }
 

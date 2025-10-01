@@ -19,7 +19,7 @@ public class EasyOcrService : IOcrService
     {
         _httpClient = httpClient;
         _logger = logger;
-        
+
         // Configure HTTP client for EasyOCR service
         _httpClient.BaseAddress = new Uri(OCR_BASE_URL);
         _httpClient.Timeout = TimeSpan.FromMinutes(2); // OCR can take time
@@ -34,22 +34,22 @@ public class EasyOcrService : IOcrService
             // Prepare multipart form data
             using var content = new MultipartFormDataContent();
             using var streamContent = new StreamContent(imageStream);
-            
+
             streamContent.Headers.ContentType = new MediaTypeHeaderValue(mimeType);
             content.Add(streamContent, "file", "image" + GetExtension(mimeType));
 
             // Call EasyOCR API
             var response = await _httpClient.PostAsync("/api/v1/ocr/extract", content, cancellationToken);
-            
+
             if (!response.IsSuccessStatusCode)
             {
                 var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogError("EasyOCR service returned error {StatusCode}: {Error}", response.StatusCode, errorContent);
-                
+
                 return new OcrResult(
                     ExtractedText: string.Empty,
-                    Annotations: new List<TextAnnotation>(),
-                    Objects: new List<DetectedObject>(),
+                    Annotations: [],
+                    Objects: [],
                     Success: false,
                     ErrorMessage: $"EasyOCR service error: {response.StatusCode}"
                 );
@@ -66,8 +66,8 @@ public class EasyOcrService : IOcrService
                 _logger.LogWarning("EasyOCR service returned unsuccessful result");
                 return new OcrResult(
                     ExtractedText: string.Empty,
-                    Annotations: new List<TextAnnotation>(),
-                    Objects: new List<DetectedObject>(),
+                    Annotations: [],
+                    Objects: [],
                     Success: false,
                     ErrorMessage: ocrResponse?.ErrorMessage ?? "Unknown error"
                 );
@@ -79,26 +79,26 @@ public class EasyOcrService : IOcrService
             {
                 var topLeft = bb.Bbox?.TopLeft;
                 var bottomRight = bb.Bbox?.BottomRight;
-                
+
                 var x = topLeft?.X ?? 0;
                 var y = topLeft?.Y ?? 0;
                 var width = (bottomRight?.X ?? 0) - x;
                 var height = (bottomRight?.Y ?? 0) - y;
-                
+
                 return new TextAnnotation(
                     Text: bb.Text ?? "",
                     Confidence: bb.Confidence,
                     BoundingBox: new BoundingBox(x, y, width, height)
                 );
-            }).ToList() ?? new List<TextAnnotation>();
+            }).ToList() ?? [];
 
-            _logger.LogInformation("EasyOCR extracted {Length} characters with {Count} text regions", 
+            _logger.LogInformation("EasyOCR extracted {Length} characters with {Count} text regions",
                 ocrResponse.Text?.Length ?? 0, annotations.Count);
 
             return new OcrResult(
                 ExtractedText: ocrResponse.Text ?? string.Empty,
                 Annotations: annotations,
-                Objects: new List<DetectedObject>(), // EasyOCR doesn't detect objects
+                Objects: [], // EasyOCR doesn't detect objects
                 Success: true
             );
         }
@@ -107,8 +107,8 @@ public class EasyOcrService : IOcrService
             _logger.LogError(ex, "Error calling EasyOCR service");
             return new OcrResult(
                 ExtractedText: string.Empty,
-                Annotations: new List<TextAnnotation>(),
-                Objects: new List<DetectedObject>(),
+                Annotations: [],
+                Objects: [],
                 Success: false,
                 ErrorMessage: ex.Message
             );
@@ -120,7 +120,7 @@ public class EasyOcrService : IOcrService
         // EasyOCR supports common image formats
         return mimeType.ToLowerInvariant() switch
         {
-            "image/jpeg" or "image/jpg" or "image/png" or "image/gif" 
+            "image/jpeg" or "image/jpg" or "image/png" or "image/gif"
                 or "image/bmp" or "image/tiff" or "image/tif" => true,
             _ => false
         };

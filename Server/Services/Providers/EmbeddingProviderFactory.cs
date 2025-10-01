@@ -30,7 +30,7 @@ public class EmbeddingProviderFactory : IEmbeddingProviderFactory
             // ["cohere"] = () => _serviceProvider.GetRequiredService<CohereEmbeddingService>(),
         };
 
-        _availableProviders = _providerResolvers.Keys.ToList();
+        _availableProviders = [.. _providerResolvers.Keys];
 
         _logger.LogInformation(
             "EmbeddingProviderFactory initialized with {Count} providers: {Providers}",

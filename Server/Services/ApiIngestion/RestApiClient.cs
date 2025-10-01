@@ -23,27 +23,20 @@ public class ApiResponse
     public Dictionary<string, string>? Metadata { get; set; }
 }
 
-public class RestApiClient : IApiClient
+public class RestApiClient(
+    IHttpClientFactory httpClientFactory,
+    ILogger<RestApiClient> logger,
+    IAuthenticationManager authManager) : IApiClient
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILogger<RestApiClient> _logger;
-    private readonly IAuthenticationManager _authManager;
-
-    public RestApiClient(
-        IHttpClientFactory httpClientFactory,
-        ILogger<RestApiClient> logger,
-        IAuthenticationManager authManager)
-    {
-        _httpClientFactory = httpClientFactory;
-        _logger = logger;
-        _authManager = authManager;
-    }
+    private readonly IHttpClientFactory _httpClientFactory = httpClientFactory;
+    private readonly ILogger<RestApiClient> _logger = logger;
+    private readonly IAuthenticationManager _authManager = authManager;
 
     public async Task<ApiResponse> FetchAsync(ApiSource source, CancellationToken cancellationToken = default)
     {
         var response = new ApiResponse
         {
-            Metadata = new Dictionary<string, string>()
+            Metadata = []
         };
 
         try
@@ -59,7 +52,7 @@ public class RestApiClient : IApiClient
             );
 
             using var httpResponse = await httpClient.SendAsync(request, cancellationToken);
-            
+
             response.HttpStatusCode = (int)httpResponse.StatusCode;
             response.RawResponse = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
             response.ResponseSizeBytes = response.RawResponse?.Length ?? 0;
@@ -67,7 +60,7 @@ public class RestApiClient : IApiClient
             if (httpResponse.IsSuccessStatusCode)
             {
                 response.Success = true;
-                
+
                 // Parse JSON response
                 if (!string.IsNullOrEmpty(response.RawResponse))
                 {
@@ -99,7 +92,7 @@ public class RestApiClient : IApiClient
             {
                 response.Success = false;
                 response.ErrorMessage = $"HTTP {response.HttpStatusCode}: {httpResponse.ReasonPhrase}";
-                
+
                 _logger.LogWarning(
                     "Failed to fetch data from {Endpoint}. Status: {StatusCode}, Response: {Response}",
                     source.EndpointUrl,
@@ -147,17 +140,17 @@ public class RestApiClient : IApiClient
     {
         // Build URL with query parameters
         var uriBuilder = new UriBuilder(source.EndpointUrl);
-        
+
         if (!string.IsNullOrEmpty(source.QueryParams))
         {
             var queryParams = JsonSerializer.Deserialize<Dictionary<string, string>>(source.QueryParams);
             if (queryParams?.Count > 0)
             {
-                var query = string.Join("&", queryParams.Select(kvp => 
+                var query = string.Join("&", queryParams.Select(kvp =>
                     $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
-                
-                uriBuilder.Query = string.IsNullOrEmpty(uriBuilder.Query) 
-                    ? query 
+
+                uriBuilder.Query = string.IsNullOrEmpty(uriBuilder.Query)
+                    ? query
                     : uriBuilder.Query.TrimStart('?') + "&" + query;
             }
         }
@@ -184,7 +177,7 @@ public class RestApiClient : IApiClient
         await _authManager.ApplyAuthenticationAsync(request, source, cancellationToken);
 
         // Add request body for POST/PUT/PATCH
-        if (!string.IsNullOrEmpty(source.RequestBody) && 
+        if (!string.IsNullOrEmpty(source.RequestBody) &&
             (source.HttpMethod.Equals("POST", StringComparison.OrdinalIgnoreCase) ||
              source.HttpMethod.Equals("PUT", StringComparison.OrdinalIgnoreCase) ||
              source.HttpMethod.Equals("PATCH", StringComparison.OrdinalIgnoreCase)))

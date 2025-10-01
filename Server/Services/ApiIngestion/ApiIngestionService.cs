@@ -21,33 +21,25 @@ public class ApiIngestionResult
     public int DocumentsFailed { get; set; }
     public long ExecutionTimeMs { get; set; }
     public string? ErrorMessage { get; set; }
-    public List<string> Warnings { get; set; } = new();
+    public List<string> Warnings { get; set; } = [];
 }
 
-public class ApiIngestionService : IApiIngestionService
+public class ApiIngestionService(
+    SmartCollectDbContext context,
+    IApiClient apiClient,
+    IDataTransformer transformer,
+    ILogger<ApiIngestionService> logger) : IApiIngestionService
 {
-    private readonly SmartCollectDbContext _context;
-    private readonly IApiClient _apiClient;
-    private readonly IDataTransformer _transformer;
-    private readonly ILogger<ApiIngestionService> _logger;
-
-    public ApiIngestionService(
-        SmartCollectDbContext context,
-        IApiClient apiClient,
-        IDataTransformer transformer,
-        ILogger<ApiIngestionService> logger)
-    {
-        _context = context;
-        _apiClient = apiClient;
-        _transformer = transformer;
-        _logger = logger;
-    }
+    private readonly SmartCollectDbContext _context = context;
+    private readonly IApiClient _apiClient = apiClient;
+    private readonly IDataTransformer _transformer = transformer;
+    private readonly ILogger<ApiIngestionService> _logger = logger;
 
     public async Task<bool> TestConnectionAsync(Guid sourceId, CancellationToken cancellationToken = default)
     {
         try
         {
-            var source = await _context.ApiSources.FindAsync(new object[] { sourceId }, cancellationToken);
+            var source = await _context.ApiSources.FindAsync([sourceId], cancellationToken);
 
             if (source == null)
             {
@@ -85,13 +77,7 @@ public class ApiIngestionService : IApiIngestionService
             // Get source configuration
             var source = await _context.ApiSources
                 .Include(s => s.IngestionLogs)
-                .FirstOrDefaultAsync(s => s.Id == sourceId, cancellationToken);
-
-            if (source == null)
-            {
-                throw new InvalidOperationException($"API source {sourceId} not found");
-            }
-
+                .FirstOrDefaultAsync(s => s.Id == sourceId, cancellationToken) ?? throw new InvalidOperationException($"API source {sourceId} not found");
             _logger.LogInformation(
                 "Starting ingestion for source {SourceId} - {SourceName}",
                 sourceId,
@@ -100,7 +86,7 @@ public class ApiIngestionService : IApiIngestionService
 
             // Step 1: Fetch data from API
             var apiResponse = await _apiClient.FetchAsync(source, cancellationToken);
-            
+
             log.HttpStatusCode = apiResponse.HttpStatusCode;
             log.ResponseSizeBytes = apiResponse.ResponseSizeBytes;
 
@@ -196,7 +182,7 @@ public class ApiIngestionService : IApiIngestionService
             log.DocumentsCreated = created;
             log.DocumentsFailed = failed;
             log.ErrorsCount = errors.Count;
-            
+
             result.DocumentsCreated = created;
             result.DocumentsFailed = failed;
             result.Warnings.AddRange(errors);
@@ -241,7 +227,7 @@ public class ApiIngestionService : IApiIngestionService
             result.ExecutionTimeMs = stopwatch.ElapsedMilliseconds;
 
             // Update source failure count
-            var source = await _context.ApiSources.FindAsync(new object[] { sourceId }, cancellationToken);
+            var source = await _context.ApiSources.FindAsync([sourceId], cancellationToken);
             if (source != null)
             {
                 source.LastRunAt = DateTime.UtcNow;

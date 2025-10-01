@@ -6,14 +6,9 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DiagnosticController : ControllerBase
+public class DiagnosticController(SmartCollectDbContext context) : ControllerBase
 {
-    private readonly SmartCollectDbContext _context;
-
-    public DiagnosticController(SmartCollectDbContext context)
-    {
-        _context = context;
-    }
+    private readonly SmartCollectDbContext _context = context;
 
     [HttpGet("hash-comparison")]
     public async Task<IActionResult> GetHashComparison()

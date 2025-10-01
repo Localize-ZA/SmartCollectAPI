@@ -7,8 +7,8 @@ namespace SmartCollectAPI.Services.ApiIngestion;
 public interface IDataTransformer
 {
     Task<List<TransformedDocument>> TransformAsync(
-        ApiSource source, 
-        ApiResponse response, 
+        ApiSource source,
+        ApiResponse response,
         CancellationToken cancellationToken = default);
 }
 
@@ -24,14 +24,9 @@ public class TransformedDocument
     public DateTime? PublishedAt { get; set; }
 }
 
-public class DataTransformer : IDataTransformer
+public partial class DataTransformer(ILogger<DataTransformer> logger) : IDataTransformer
 {
-    private readonly ILogger<DataTransformer> _logger;
-
-    public DataTransformer(ILogger<DataTransformer> logger)
-    {
-        _logger = logger;
-    }
+    private readonly ILogger<DataTransformer> _logger = logger;
 
     public async Task<List<TransformedDocument>> TransformAsync(
         ApiSource source,
@@ -98,13 +93,13 @@ public class DataTransformer : IDataTransformer
         return results;
     }
 
-    private List<JsonElement> ExtractRecords(JsonElement root, string path)
+    private static List<JsonElement> ExtractRecords(JsonElement root, string path)
     {
         var records = new List<JsonElement>();
 
         // Simple JSONPath implementation
         // Supports: $ (root), $[*] (all array items), $.data, $.items[*], etc.
-        
+
         if (string.IsNullOrEmpty(path) || path == "$")
         {
             // Root is the record(s)
@@ -142,13 +137,13 @@ public class DataTransformer : IDataTransformer
         foreach (var segment in segments)
         {
             // Handle array notation like "items[*]" or "items"
-            var arrayMatch = Regex.Match(segment, @"^(\w+)\[\*\]$");
-            
+            var arrayMatch = MyRegex().Match(segment);
+
             if (arrayMatch.Success)
             {
                 // Navigate to array and expand
                 var arrayName = arrayMatch.Groups[1].Value;
-                if (current.TryGetProperty(arrayName, out var arrayElement) && 
+                if (current.TryGetProperty(arrayName, out var arrayElement) &&
                     arrayElement.ValueKind == JsonValueKind.Array)
                 {
                     records.AddRange(arrayElement.EnumerateArray());
@@ -187,18 +182,18 @@ public class DataTransformer : IDataTransformer
     {
         if (string.IsNullOrEmpty(fieldMappingsJson))
         {
-            return new Dictionary<string, string>();
+            return [];
         }
 
         try
         {
             return JsonSerializer.Deserialize<Dictionary<string, string>>(fieldMappingsJson)
-                ?? new Dictionary<string, string>();
+                ?? [];
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Failed to parse field mappings, using defaults");
-            return new Dictionary<string, string>();
+            return [];
         }
     }
 
@@ -214,13 +209,12 @@ public class DataTransformer : IDataTransformer
                 Source = source.Name,
                 SourceUrl = source.EndpointUrl,
                 FileType = "json",
-                Metadata = new Dictionary<string, object>()
+                Metadata = [],
+                // Apply field mappings
+                Title = GetFieldValue(record, fieldMappings, "title", "name", "subject", "headline"),
+                Content = GetFieldValue(record, fieldMappings, "content", "body", "text", "description"),
+                Description = GetFieldValue(record, fieldMappings, "description", "summary", "excerpt")
             };
-
-            // Apply field mappings
-            doc.Title = GetFieldValue(record, fieldMappings, "title", "name", "subject", "headline");
-            doc.Content = GetFieldValue(record, fieldMappings, "content", "body", "text", "description");
-            doc.Description = GetFieldValue(record, fieldMappings, "description", "summary", "excerpt");
 
             // Extract published date if available
             var publishedStr = GetFieldValue(record, fieldMappings, "published_at", "publishedAt", "createdAt", "created_at", "date");
@@ -266,8 +260,8 @@ public class DataTransformer : IDataTransformer
             // If no title, create from content
             if (string.IsNullOrEmpty(doc.Title))
             {
-                doc.Title = doc.Content?.Length > 100 
-                    ? doc.Content[..100] + "..." 
+                doc.Title = doc.Content?.Length > 100
+                    ? doc.Content[..100] + "..."
                     : doc.Content;
             }
 
@@ -280,7 +274,7 @@ public class DataTransformer : IDataTransformer
         }
     }
 
-    private string? GetFieldValue(
+    private static string? GetFieldValue(
         JsonElement record,
         Dictionary<string, string> fieldMappings,
         params string[] fieldNames)
@@ -310,4 +304,7 @@ public class DataTransformer : IDataTransformer
 
         return null;
     }
+
+    [GeneratedRegex(@"^(\w+)\[\*\]$")]
+    private static partial Regex MyRegex();
 }

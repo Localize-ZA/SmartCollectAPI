@@ -7,21 +7,14 @@ namespace SmartCollectAPI.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DecisionEngineController : ControllerBase
+public class DecisionEngineController(
+    IDecisionEngine decisionEngine,
+    IEmbeddingProviderFactory embeddingFactory,
+    ILogger<DecisionEngineController> logger) : ControllerBase
 {
-    private readonly IDecisionEngine _decisionEngine;
-    private readonly IEmbeddingProviderFactory _embeddingFactory;
-    private readonly ILogger<DecisionEngineController> _logger;
-
-    public DecisionEngineController(
-        IDecisionEngine decisionEngine,
-        IEmbeddingProviderFactory embeddingFactory,
-        ILogger<DecisionEngineController> logger)
-    {
-        _decisionEngine = decisionEngine;
-        _embeddingFactory = embeddingFactory;
-        _logger = logger;
-    }
+    private readonly IDecisionEngine _decisionEngine = decisionEngine;
+    private readonly IEmbeddingProviderFactory _embeddingFactory = embeddingFactory;
+    private readonly ILogger<DecisionEngineController> _logger = logger;
 
     /// <summary>
     /// Test the decision engine with sample document metadata
@@ -114,7 +107,7 @@ public class DecisionEngineController : ControllerBase
     [HttpGet("run-tests")]
     public async Task<ActionResult<List<TestResult>>> RunTests()
     {
-        var testCases = GetTestCases().Value ?? new List<DocumentAnalysisRequest>();
+        var testCases = GetTestCases().Value ?? [];
         var results = new List<TestResult>();
 
         foreach (var testCase in testCases)
@@ -208,7 +201,7 @@ public class DecisionEngineController : ControllerBase
 
             var provider = _embeddingFactory.GetProvider(request.ProviderKey);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            
+
             var result = await provider.GenerateEmbeddingAsync(request.Text);
             stopwatch.Stop();
 
@@ -219,7 +212,7 @@ public class DecisionEngineController : ControllerBase
                 Dimensions = result.Embedding.ToArray().Length,
                 ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
                 ErrorMessage = result.ErrorMessage,
-                SampleValues = result.Success ? result.Embedding.ToArray().Take(5).ToList() : null
+                SampleValues = result.Success ? [.. result.Embedding.ToArray().Take(5)] : null
             });
         }
         catch (Exception ex)
@@ -243,7 +236,7 @@ public class DecisionEngineController : ControllerBase
             {
                 var provider = _embeddingFactory.GetProvider(providerKey);
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                
+
                 var result = await provider.GenerateEmbeddingAsync(request.Text);
                 stopwatch.Stop();
 
@@ -254,7 +247,7 @@ public class DecisionEngineController : ControllerBase
                     Dimensions = result.Embedding.ToArray().Length,
                     ExecutionTimeMs = stopwatch.ElapsedMilliseconds,
                     ErrorMessage = result.ErrorMessage,
-                    SampleValues = result.Success ? result.Embedding.ToArray().Take(5).ToList() : null
+                    SampleValues = result.Success ? [.. result.Embedding.ToArray().Take(5)] : null
                 });
             }
             catch (Exception ex)
@@ -292,7 +285,7 @@ public class TestResult
 public class ProviderInfoResponse
 {
     public string DefaultProvider { get; set; } = string.Empty;
-    public List<ProviderDetail> Providers { get; set; } = new();
+    public List<ProviderDetail> Providers { get; set; } = [];
 }
 
 public class ProviderDetail

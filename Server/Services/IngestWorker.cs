@@ -31,7 +31,7 @@ public class IngestWorker : BackgroundService
         _redis = redis;
         _scopeFactory = scopeFactory;
         _jobQueue = jobQueue as RedisJobQueue ?? throw new ArgumentException("JobQueue must be RedisJobQueue");
-        
+
         // For backup/debugging purposes
         _processedRoot = Path.Combine(AppContext.BaseDirectory, "processed");
         Directory.CreateDirectory(_processedRoot);
@@ -84,10 +84,10 @@ public class IngestWorker : BackgroundService
                         using var scope = _scopeFactory.CreateScope();
                         var dbContext = scope.ServiceProvider.GetRequiredService<SmartCollectDbContext>();
                         var pipeline = scope.ServiceProvider.GetRequiredService<IDocumentProcessingPipeline>();
-                        
+
                         stagingDoc = await dbContext.StagingDocuments
                             .FirstOrDefaultAsync(sd => sd.JobId == job.JobId.ToString(), stoppingToken);
-                        
+
                         if (stagingDoc == null)
                         {
                             stagingDoc = new StagingDocument
@@ -108,17 +108,17 @@ public class IngestWorker : BackgroundService
                             stagingDoc.Attempts++;
                             stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
                         }
-                        
+
                         await dbContext.SaveChangesAsync(stoppingToken);
 
                         // Check if document already exists (idempotency by SHA256)
                         var existingDoc = await dbContext.Documents
                             .FirstOrDefaultAsync(d => d.Sha256 == job.Sha256, stoppingToken);
-                        
+
                         if (existingDoc != null)
                         {
                             _logger.LogInformation("Document with SHA256 {Sha256} already exists, skipping processing", job.Sha256);
-                            
+
                             // Mark staging as done and ack the message
                             stagingDoc.Status = "done";
                             stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
@@ -155,7 +155,7 @@ public class IngestWorker : BackgroundService
                                     // Convert float[] to Pgvector.Vector if necessary
                                     document.Embedding = new Vector(pipelineResult.CanonicalDocument.Embedding);
                                 }
-                                _logger.LogInformation("Document processed with {Dimensions} embedding dimensions using provider {Provider}", 
+                                _logger.LogInformation("Document processed with {Dimensions} embedding dimensions using provider {Provider}",
                                     pipelineResult.CanonicalDocument.EmbeddingDim,
                                     pipelineResult.EmbeddingProvider ?? "unknown");
                             }
@@ -164,11 +164,11 @@ public class IngestWorker : BackgroundService
                             await dbContext.SaveChangesAsync(stoppingToken); // Save to get the document ID
 
                             // Save chunks if available
-                            if (pipelineResult.ChunkEmbeddings != null && pipelineResult.ChunkEmbeddings.Any())
+                            if (pipelineResult.ChunkEmbeddings != null && pipelineResult.ChunkEmbeddings.Count != 0)
                             {
-                                _logger.LogInformation("Saving {Count} chunks for document {DocumentId}", 
+                                _logger.LogInformation("Saving {Count} chunks for document {DocumentId}",
                                     pipelineResult.ChunkEmbeddings.Count, document.Id);
-                                
+
                                 foreach (var chunkEmb in pipelineResult.ChunkEmbeddings)
                                 {
                                     var chunk = new DocumentChunk
@@ -182,10 +182,10 @@ public class IngestWorker : BackgroundService
                                         Metadata = JsonSerializer.Serialize(chunkEmb.Metadata),
                                         CreatedAt = DateTime.UtcNow
                                     };
-                                    
+
                                     dbContext.DocumentChunks.Add(chunk);
                                 }
-                                
+
                                 await dbContext.SaveChangesAsync(stoppingToken);
                                 _logger.LogInformation("Successfully saved {Count} chunks", pipelineResult.ChunkEmbeddings.Count);
                             }
@@ -200,7 +200,7 @@ public class IngestWorker : BackgroundService
                             // Save processed document for backup/debugging
                             await SaveProcessedDocument(pipelineResult.CanonicalDocument, stoppingToken);
 
-                            _logger.LogInformation("Successfully processed job {JobId}. Notification sent: {NotificationSent}", 
+                            _logger.LogInformation("Successfully processed job {JobId}. Notification sent: {NotificationSent}",
                                 job.JobId, pipelineResult.NotificationResult?.Success == true);
                         }
                         else
@@ -210,7 +210,7 @@ public class IngestWorker : BackgroundService
                             stagingDoc.UpdatedAt = DateTimeOffset.UtcNow;
                             await dbContext.SaveChangesAsync(stoppingToken);
 
-                            _logger.LogError("Pipeline processing failed for job {JobId}: {Error}", 
+                            _logger.LogError("Pipeline processing failed for job {JobId}: {Error}",
                                 job.JobId, pipelineResult.ErrorMessage);
                         }
 
@@ -219,12 +219,12 @@ public class IngestWorker : BackgroundService
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Failed processing entry {Id}", e.Id);
-                        
+
                         // Check retry count from Redis message
                         var fields = e.Values.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
-                        var retryCount = fields.TryGetValue("retry_count", out var retryCountStr) && 
+                        var retryCount = fields.TryGetValue("retry_count", out var retryCountStr) &&
                                         int.TryParse(retryCountStr, out var count) ? count : 0;
-                        
+
                         // Update staging document status to failed if we have it
                         if (stagingDoc != null)
                         {
@@ -232,10 +232,10 @@ public class IngestWorker : BackgroundService
                             {
                                 using var scope = _scopeFactory.CreateScope();
                                 var dbContext = scope.ServiceProvider.GetRequiredService<SmartCollectDbContext>();
-                                
+
                                 var existingStagingDoc = await dbContext.StagingDocuments
                                     .FirstOrDefaultAsync(sd => sd.Id == stagingDoc.Id, stoppingToken);
-                                    
+
                                 if (existingStagingDoc != null)
                                 {
                                     existingStagingDoc.Status = retryCount >= MaxRetryAttempts ? "failed" : "pending";
@@ -248,17 +248,17 @@ public class IngestWorker : BackgroundService
                                 _logger.LogError(dbEx, "Failed to update staging document status");
                             }
                         }
-                        
+
                         // If max retries exceeded, move to DLQ
                         if (retryCount >= MaxRetryAttempts)
                         {
-                            await _jobQueue.MoveToDeadLetterQueueAsync(StreamName, group, e.Id.ToString(), 
+                            await _jobQueue.MoveToDeadLetterQueueAsync(StreamName, group, e.Id.ToString(),
                                 $"Max retries ({MaxRetryAttempts}) exceeded: {ex.Message}", stoppingToken);
                         }
                         else
                         {
                             // Don't ack; it can be retried later
-                            _logger.LogInformation("Job {MessageId} will be retried. Current retry count: {RetryCount}", 
+                            _logger.LogInformation("Job {MessageId} will be retried. Current retry count: {RetryCount}",
                                 e.Id, retryCount);
                         }
                     }
@@ -289,7 +289,7 @@ public class IngestWorker : BackgroundService
             var outDir = Path.Combine(_processedRoot, now.ToString("yyyy"), now.ToString("MM"), now.ToString("dd"));
             Directory.CreateDirectory(outDir);
             var outFile = Path.Combine(outDir, canonical.Id + ".json");
-            
+
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(canonical, options);
             await File.WriteAllTextAsync(outFile, json, cancellationToken);
