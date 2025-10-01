@@ -74,19 +74,21 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             var parseResult = await ParseDocumentAsync(fileStream, detectedMimeType, cancellationToken);
             // Note: Stream may be closed by parser, so don't try to reset position
 
+            var extractedText = SanitizeText(parseResult.ExtractedText);
+
             // Step 4: Extract entities from text
             EntityExtractionResult? entityResult = null;
-            if (!string.IsNullOrWhiteSpace(parseResult.ExtractedText))
+            if (!string.IsNullOrWhiteSpace(extractedText))
             {
                 var entityService = _providerFactory.GetEntityExtractionService();
-                entityResult = await entityService.ExtractEntitiesAsync(parseResult.ExtractedText, cancellationToken);
+                entityResult = await entityService.ExtractEntitiesAsync(extractedText, cancellationToken);
             }
 
             // Step 5: Chunk text for better semantic search
             List<TextChunk>? chunks = null;
-            if (!string.IsNullOrWhiteSpace(parseResult.ExtractedText) && parseResult.ExtractedText.Length > 2000)
+            if (!string.IsNullOrWhiteSpace(extractedText) && extractedText.Length > 2000)
             {
-                _logger.LogInformation("Chunking text ({Length} chars) for better semantic search", parseResult.ExtractedText.Length);
+                _logger.LogInformation("Chunking text ({Length} chars) for better semantic search", extractedText.Length);
                 
                 var chunkingOptions = new ChunkingOptions(
                     MaxTokens: 512,      // ~2048 characters per chunk
@@ -94,7 +96,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                     Strategy: ChunkingStrategy.SlidingWindow
                 );
                 
-                chunks = _chunkingService.ChunkText(parseResult.ExtractedText, chunkingOptions);
+                chunks = _chunkingService.ChunkText(extractedText, chunkingOptions);
                 _logger.LogInformation("Created {ChunkCount} chunks from document", chunks.Count);
             }
 
@@ -141,7 +143,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             else
             {
                 // Generate single embedding for the whole document
-                var textToEmbed = PrepareTextForEmbedding(parseResult.ExtractedText, parseResult.Metadata);
+                var textToEmbed = PrepareTextForEmbedding(extractedText, parseResult.Metadata);
                 embeddingResult = await embeddingService.GenerateEmbeddingAsync(textToEmbed, cancellationToken);
             }
 
@@ -327,7 +329,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             Mime = job.MimeType,
             Structured = isStructured,
             StructuredPayload = structuredPayload,
-            ExtractedText = parseResult.ExtractedText,
+            ExtractedText = SanitizeText(parseResult.ExtractedText),
             Entities = entities,
             Tables = tables,
             Sections = sections,
@@ -432,6 +434,29 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
     private static bool IsImage(string mimeType)
     {
         return mimeType.ToLowerInvariant().StartsWith("image/");
+    }
+
+    private static string SanitizeText(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text ?? string.Empty;
+        }
+
+        var sanitized = new System.Text.StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            if (char.IsControl(ch) && ch != '\r' && ch != '\n' && ch != '\t')
+            {
+                sanitized.Append(' ');
+            }
+            else
+            {
+                sanitized.Append(ch);
+            }
+        }
+
+        return sanitized.ToString();
     }
 
     private static string PrepareTextForEmbedding(string? extractedText, Dictionary<string, object>? metadata)

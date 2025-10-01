@@ -98,10 +98,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-[85vw] h-[75vh] max-h-[650px] p-0 overflow-hidden">
-        <div className="flex h-full">
+      <DialogContent 
+        className="!max-w-none w-[96vw] h-[88vh] p-0 overflow-hidden"
+        showCloseButton={false}
+      >
+        <div className="flex h-full overflow-hidden">
           {/* Sidebar */}
-          <div className="w-64 border-r bg-muted/30 p-4 flex-shrink-0">
+          <div className="w-64 border-r bg-muted/30 p-4 flex-shrink-0 overflow-y-auto">
             <DialogHeader className="px-2 pb-4">
               <DialogTitle className="text-lg">Settings</DialogTitle>
             </DialogHeader>
@@ -137,10 +140,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <div>
+            <div className="flex items-center justify-between p-6 border-b flex-shrink-0">
+              <div className="min-w-0 flex-1">
                 <h2 className="text-lg font-semibold">
                   {settingsTabs.find(tab => tab.id === activeTab)?.label}
                 </h2>
@@ -148,25 +151,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   {settingsTabs.find(tab => tab.id === activeTab)?.description}
                 </p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onClose}
-                className="h-8 w-8"
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
 
             {/* Panel Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-6">
               {renderActivePanel()}
             </div>
 
             {/* Footer */}
-            <div className="border-t p-4 flex justify-end space-x-3">
+            <div className="border-t p-4 flex justify-end space-x-3 flex-shrink-0">
               <Button variant="outline" onClick={onClose}>
-                Cancel
+                Close
               </Button>
               <Button>
                 Save Changes
