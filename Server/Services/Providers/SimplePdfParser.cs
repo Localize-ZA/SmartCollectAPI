@@ -33,7 +33,7 @@ public class SimplePdfParser : IAdvancedDocumentParser
             await Task.Delay(100, cancellationToken); // Simulate processing time
 
             var extractedText = "PDF parsing requires advanced library integration. " +
-                               "Consider using Google Document AI for full PDF processing capabilities.";
+                               "Consider integrating a higher fidelity parser (e.g., OCRmyPDF or Apache Tika) for full PDF processing capabilities.";
 
             var metadata = new Dictionary<string, object>
             {

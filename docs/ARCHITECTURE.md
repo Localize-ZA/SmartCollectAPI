@@ -6,18 +6,20 @@ SmartCollectAPI is a .NET 9 document processing pipeline that ingests files, pro
 ## Current Architecture
 
 ### 🏗️ Infrastructure Stack
-- **API**: ASP.NET Core 9 Minimal API
+- **API**: ASP.NET Core 9 Minimal API (development host: `http://localhost:5082`)
+- **NLP Microservice**: Python FastAPI + spaCy (`micros/spaCy`, default `http://localhost:5084`)
 - **Queue**: Redis Streams with Dead Letter Queue (DLQ)
 - **Database**: PostgreSQL 16+ with pgvector extension
+- **Frontend**: Next.js dashboard (optional, lives in `client/`)
 - **Container Orchestration**: Docker Compose for development
 
 ### 🔄 Data Flow
-1. **Ingestion**: Files uploaded via `/api/ingest` endpoint
-2. **Storage**: Raw files stored locally (configurable for GCS)
+1. **Ingestion**: Files uploaded via `/api/ingest` or `/api/ingest/bulk`
+2. **Storage**: Raw files stored locally (configurable for S3-compatible storage)
 3. **Queuing**: Job metadata enqueued to Redis Stream
-4. **Processing**: Background worker processes files
-5. **Persistence**: Structured data saved to PostgreSQL
-6. **Status Tracking**: Job lifecycle tracked in staging_documents table
+4. **Processing**: Hosted workers parse content and call the spaCy microservice for NLP + embeddings
+5. **Persistence**: Canonical JSON and vectors saved to PostgreSQL
+6. **Status Tracking**: Job lifecycle tracked in the `staging_documents` table
 
 ## Database Schema
 
@@ -26,7 +28,7 @@ SmartCollectAPI is a .NET 9 document processing pipeline that ingests files, pro
 - **documents**: Final processed documents with canonical JSON and vector embeddings
 
 ### Key Features
-- pgvector extension for similarity search (1536-dimensional embeddings)
+- pgvector extension for similarity search (96-dimensional embeddings with spaCy `en_core_web_sm`)
 - JSONB columns for flexible document storage
 - Comprehensive indexing for performance
 - SHA256 deduplication
@@ -51,7 +53,6 @@ SmartCollectAPI is a .NET 9 document processing pipeline that ingests files, pro
   "notify_email": "optional@email.com"
 }
 ```
-
 ## Code Quality & Maintainability
 
 ### ✅ Strengths
@@ -79,15 +80,15 @@ SmartCollectAPI is a .NET 9 document processing pipeline that ingests files, pro
 4. **API Documentation**: Enhance OpenAPI/Swagger documentation
 
 #### Medium Priority
-1. **Vectorization**: Implement Vertex AI embeddings integration
-2. **Gmail Integration**: Complete email notification system
-3. **File Validation**: Add comprehensive file type validation
-4. **Rate Limiting**: Implement API rate limiting
+1. **Vectorization**: Optionally integrate alternative embedding providers (Vertex AI, OpenAI, etc.)
+2. **Notifications**: Finish SMTP/email notification flows and templates
+3. **File Validation**: Add comprehensive file type + size validation
+4. **Rate Limiting**: Implement API rate limiting / throttling
 
 #### Low Priority
 1. **Metrics Export**: Add Prometheus metrics export
 2. **Caching**: Implement Redis caching for processed results
-3. **Batch Processing**: Support batch file uploads
+3. **Bulk UX**: Improve bulk upload feedback and progress reporting
 4. **Admin Dashboard**: Create monitoring/admin interface
 
 ## Development Workflow
@@ -97,16 +98,21 @@ SmartCollectAPI is a .NET 9 document processing pipeline that ingests files, pro
 # Start infrastructure
 docker compose -f docker-compose.dev.yml up -d
 
+# Start spaCy service (new terminal)
+cd micros/spaCy
+python -m uvicorn app:app --host 0.0.0.0 --port 5084 --reload
+
 # Run API
-cd Server && dotnet run
+cd Server
+dotnet run
 
 # Check health
-curl http://localhost:5000/health
+curl http://localhost:5082/health
 ```
 
 ### Key Configuration
-- Connection strings in appsettings.json
-- Docker services on standard ports (5432, 6379)
+- Connection strings live in `Server/appsettings.Development.json`
+- Docker services expose Postgres on `5433` and Redis on `6379`
 - Health checks available at `/health`
 - Basic health check at `/health/basic`
 

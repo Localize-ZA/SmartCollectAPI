@@ -106,8 +106,9 @@ namespace SmartCollectAPI
 
             // Configure provider options
             builder.Services.Configure<ServicesOptions>(builder.Configuration.GetSection("Services"));
-            builder.Services.Configure<GoogleCloudOptions>(builder.Configuration.GetSection("GoogleCloud"));
             builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection("Smtp"));
+            builder.Services.Configure<LibreOfficeOptions>(builder.Configuration.GetSection("LibreOffice"));
+            builder.Services.Configure<TesseractOptions>(builder.Configuration.GetSection("Tesseract"));
 
             // CORS for local dev (allow Next.js on :3000)
             builder.Services.AddCors(options =>
@@ -141,15 +142,14 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJsonParser, SmartCollectAPI.Services.JsonParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
-
-                // Register Google Document AI (only Google service we keep)
-                builder.Services.AddScoped<GoogleDocAiParser>();
-
                 // Register OSS providers (default for all other services)
+                builder.Services.AddSingleton<ILibreOfficeConversionService, LibreOfficeConversionService>();
+                builder.Services.AddScoped<OssDocumentParser>();
                 builder.Services.AddScoped<SimplePdfParser>();
                 builder.Services.AddScoped<PdfPigParser>(); // Advanced PDF parser
                 builder.Services.AddScoped<SimpleEmbeddingService>();
                 builder.Services.AddScoped<SmtpNotificationService>();
+                builder.Services.AddScoped<TesseractOcrService>();
                 builder.Services.AddScoped<SimpleOcrService>();
                 builder.Services.AddScoped<SimpleEntityExtractionService>();
                 

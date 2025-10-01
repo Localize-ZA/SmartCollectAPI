@@ -31,17 +31,19 @@ public class ProviderFactory : IProviderFactory
         _logger.LogInformation($"ProviderFactory: Parser config = '{_options.Parser}', using provider: {_options.Parser?.ToUpperInvariant() ?? "DEFAULT"}");
         return _options.Parser?.ToUpperInvariant() switch
         {
-            "GOOGLE" => _serviceProvider.GetRequiredService<GoogleDocAiParser>(),
-            "OSS" => _serviceProvider.GetRequiredService<PdfPigParser>(), // Use advanced PdfPig parser
-            "SIMPLE" => _serviceProvider.GetRequiredService<SimplePdfParser>(), // Keep simple as option
-            _ => _serviceProvider.GetRequiredService<PdfPigParser>() // Default to PdfPig for better parsing
+            "OSS" => _serviceProvider.GetRequiredService<OssDocumentParser>(), // Composite parser with LibreOffice + PdfPig
+            "SIMPLE" => _serviceProvider.GetRequiredService<SimplePdfParser>(), // Lightweight baseline parser
+            _ => _serviceProvider.GetRequiredService<OssDocumentParser>() // Default to OSS composite parser
         };
     }
 
     public IOcrService GetOcrService()
     {
-        // Only OSS OCR service is supported
-        return _serviceProvider.GetRequiredService<SimpleOcrService>();
+        return _options.OCR?.ToUpperInvariant() switch
+        {
+            "SIMPLE" => _serviceProvider.GetRequiredService<SimpleOcrService>(),
+            _ => _serviceProvider.GetRequiredService<TesseractOcrService>()
+        };
     }
 
     public IEmbeddingService GetEmbeddingService()
@@ -65,7 +67,7 @@ public class ProviderFactory : IProviderFactory
 
 public class ServicesOptions
 {
-    public string Parser { get; set; } = "Google";  // Keep Google Document AI only
+    public string Parser { get; set; } = "OSS";  // Default to OSS parsers
     public string OCR { get; set; } = "OSS";
     public string Embeddings { get; set; } = "OSS";
     public string EntityExtraction { get; set; } = "OSS";

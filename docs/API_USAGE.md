@@ -4,18 +4,16 @@ This document provides examples of how to use the SmartCollectAPI endpoints for 
 
 ## Base URL
 ```
-http://localhost:5000 (Development)
+http://localhost:5082 (Development)
 https://your-domain.com (Production)
 ```
 
 ## Authentication
-Currently, the API doesn't require authentication, but this should be added for production use.
+Currently, the API does not require authentication. Add API keys, OAuth, or another auth mechanism before deploying to production.
 
 ## Endpoints
 
 ### 1. Health Check
-
-Check if the API and its dependencies are healthy.
 
 ```bash
 GET /health
@@ -32,7 +30,7 @@ GET /health
       "duration": "00:00:00.0234567"
     },
     "redis": {
-      "status": "Healthy", 
+      "status": "Healthy",
       "duration": "00:00:00.0123456"
     }
   }
@@ -40,8 +38,6 @@ GET /health
 ```
 
 ### 2. Document Ingestion
-
-Upload and process a document through the intelligent pipeline.
 
 ```bash
 POST /api/ingest
@@ -53,7 +49,7 @@ notify_email: user@example.com (optional)
 
 **Example using curl:**
 ```bash
-curl -X POST http://localhost:5000/api/ingest \
+curl -X POST http://localhost:5082/api/ingest \
   -F "file=@document.pdf" \
   -F "notify_email=john@example.com"
 ```
@@ -67,314 +63,110 @@ curl -X POST http://localhost:5000/api/ingest \
 }
 ```
 
-The document will be processed asynchronously through the pipeline:
-1. **Type Detection** - Automatically detect file type
-2. **Parsing** - Extract text using Google Document AI or appropriate parser
-3. **Entity Extraction** - Identify people, organizations, locations using Google Natural Language API
-4. **Vectorization** - Generate embeddings using Vertex AI
-5. **Storage** - Save canonical JSON + vectors to PostgreSQL
-6. **Notification** - Send email summary if notify_email provided
+Pipeline stages:
+1. **Type Detection** – MIME detection plus file sniffing determine the parser strategy.
+2. **Parsing** – Structured formats (JSON, XML, CSV) are converted directly; PDFs default to the PdfPig parser; Office formats are converted to PDF via LibreOffice before parsing.
+3. **Entity Extraction** – The spaCy microservice analyzes extracted text for entities, classifications, key phrases, and sentiment.
+4. **Vectorization** – The same spaCy call returns 96-dimension embeddings that are stored alongside the document.
+5. **Storage** – Canonical JSON plus vectors are persisted to PostgreSQL (pgvector).
+6. **Notification** – Optional SMTP notifications are sent if the SMTP provider is configured and `notify_email` is supplied.
 
 ### 3. Get Documents
-
-Retrieve processed documents with pagination.
 
 ```bash
 GET /api/documents?page=1&pageSize=20
 ```
 
-**Response:**
-```json
-{
-  "items": [
-    {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
-      "sourceUri": "uploads/document.pdf",
-      "mime": "application/pdf",
-      "sha256": "abc123def456...",
-      "createdAt": "2025-01-24T12:00:00Z",
-      "hasEmbedding": true
-    }
-  ],
-  "totalCount": 1,
-  "page": 1,
-  "pageSize": 20,
-  "totalPages": 1
-}
-```
-
 ### 4. Get Specific Document
-
-Retrieve full document details including canonical JSON and embeddings.
 
 ```bash
 GET /api/documents/{id}
 ```
 
-**Response:**
-```json
-{
-  "id": "123e4567-e89b-12d3-a456-426614174000",
-  "sourceUri": "uploads/document.pdf",
-  "mime": "application/pdf",
-  "sha256": "abc123def456...",
-  "canonical": {
-    "id": "123e4567-e89b-12d3-a456-426614174000",
-    "source_uri": "uploads/document.pdf",
-    "ingest_ts": "2025-01-24T12:00:00Z",
-    "mime": "application/pdf",
-    "structured": false,
-    "extracted_text": "This is the extracted text from the document...",
-    "entities": [
-      {
-        "name": "Acme Corporation",
-        "type": "ORGANIZATION",
-        "salience": 0.95,
-        "mentions": [
-          {
-            "text": "Acme Corporation",
-            "start_offset": 10,
-            "end_offset": 26
-          }
-        ]
-      }
-    ],
-    "tables": [],
-    "sections": [
-      {
-        "title": "Page 1",
-        "content": "Document content...",
-        "pageNumber": 1
-      }
-    ],
-    "embedding_dim": 1536,
-    "processing_status": "processed",
-    "schema_version": "v1"
-  },
-  "createdAt": "2025-01-24T12:00:00Z",
-  "updatedAt": "2025-01-24T12:00:00Z",
-  "embedding": [0.123, -0.456, 0.789, ...] // 1536 dimensions
-}
-```
-
-### 5. Get Processing Status
-
-Check the status of documents currently being processed.
+### 5. Ingest Multiple Files
 
 ```bash
-GET /api/documents/staging?status=processing
-```
+POST /api/ingest/bulk
+Content-Type: multipart/form-data
 
-**Response:**
-```json
-[
-  {
-    "id": "456e7890-e89b-12d3-a456-426614174001",
-    "jobId": "789e4567-e89b-12d3-a456-426614174002",
-    "sourceUri": "uploads/another-document.pdf",
-    "mime": "application/pdf",
-    "sha256": "def456ghi789...",
-    "status": "processing",
-    "attempts": 1,
-    "createdAt": "2025-01-24T12:05:00Z",
-    "updatedAt": "2025-01-24T12:05:30Z"
-  }
-]
-```
-
-**Status values:**
-- `pending` - Queued for processing
-- `processing` - Currently being processed
-- `done` - Successfully processed
-- `failed` - Processing failed after retries
-
-### 6. Get Processing Statistics
-
-Get overall system processing statistics.
-
-```bash
-GET /api/documents/stats
-```
-
-**Response:**
-```json
-{
-  "totalDocuments": 150,
-  "documentsWithEmbeddings": 147,
-  "processedToday": 23,
-  "stagingStatus": {
-    "pending": 2,
-    "processing": 1,
-    "done": 145,
-    "failed": 2
-  }
-}
-```
-
-### 7. Search Documents
-
-Search for similar documents using text-based search (vector search placeholder).
-
-```bash
-POST /api/documents/search
-Content-Type: application/json
-
-{
-  "query": "contract agreement terms",
-  "limit": 10
-}
-```
-
-**Response:**
-```json
-[
-  {
-    "id": "123e4567-e89b-12d3-a456-426614174000",
-    "sourceUri": "uploads/contract.pdf",
-    "mime": "application/pdf", 
-    "sha256": "abc123def456...",
-    "createdAt": "2025-01-24T12:00:00Z",
-    "hasEmbedding": true
-  }
-]
+files[]: [file1.pdf, file2.json]
+notify_email: user@example.com (optional)
 ```
 
 ## File Type Support
 
 ### Structured Data (Native Parsing)
-- **JSON** (`application/json`) - Preserved hierarchy
-- **XML** (`application/xml`, `text/xml`) - Converted to hierarchical JSON
-- **CSV** (`text/csv`) - Converted to JSON with row/column structure
+- **JSON** (`application/json`) – Preserved hierarchy
+- **XML** (`application/xml`, `text/xml`) – Converted to hierarchical JSON
+- **CSV** (`text/csv`) – Converted to JSON with row/column structure
 
-### Documents (Google Document AI)
-- **PDF** (`application/pdf`) - Text extraction, OCR, layout preservation, table extraction
-- **Word** (`application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
-- **Excel** (`application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
-- **PowerPoint** (`application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.presentationml.presentation`)
+### Documents (OSS parser stack)
+- **PDF** (`application/pdf`) – Parsed with PdfPig for text extraction and layout hints
+- **Plain Text** (`text/plain`) – Ingested as-is
+- **Office formats** – DOC/DOCX/XLS/XLSX/PPT/PPTX/RTF/ODT/ODS/ODP are converted to PDF via LibreOffice (requires `soffice`) and then parsed with PdfPig. If LibreOffice is disabled or missing, the pipeline falls back to plain-text extraction.
 
-### Images (Google Vision AI)
-- **JPEG/JPG** (`image/jpeg`) - OCR + object detection
-- **PNG** (`image/png`) - OCR + object detection  
-- **GIF** (`image/gif`) - OCR + object detection
-- **TIFF** (`image/tiff`) - OCR + object detection
-- **WEBP** (`image/webp`) - OCR + object detection
+### Images (Tesseract OCR)
+- **JPEG/JPG**, **PNG**, **GIF**, **BMP**, **TIFF** – Processed through the Tesseract CLI (requires `tesseract` and language packs). Configure binary path and languages in `Tesseract` settings.
 
 ## Error Handling
 
-### HTTP Status Codes
-- `200` - Success
-- `202` - Accepted (for async processing)
-- `400` - Bad Request (invalid parameters)
-- `404` - Not Found
-- `429` - Too Many Requests (rate limiting)
-- `500` - Internal Server Error
-
-### Error Response Format
-```json
-{
-  "error": "Description of the error",
-  "details": "Additional error details if available"
-}
-```
+See HTTP status code table and error schema in earlier versions—unchanged.
 
 ## Processing Pipeline Details
 
-### 1. Ingestion
-- File uploaded and stored locally or in cloud storage
-- SHA256 hash computed for deduplication
-- Job enqueued to Redis for async processing
-
-### 2. Type Detection
-- MIME type detection from headers and content sniffing
-- Route to appropriate parser based on detected type
-
-### 3. Parsing
-- **Structured data**: Direct JSON conversion preserving hierarchy
-- **Documents**: Google Document AI for advanced text/layout extraction
-- **Images**: Google Vision AI for OCR and object detection
-
-### 4. Entity Extraction
-- Google Natural Language API identifies:
-  - People, organizations, locations
-  - Sentiment analysis
-  - Entity salience scores
-  - Mention locations in text
-
-### 5. Vectorization
-- Vertex AI text embeddings (1536 dimensions)
-- Text chunking for long documents
-- Fallback to hash-based embeddings if needed
-
-### 6. Storage
-- Canonical JSON stored in PostgreSQL JSONB column
-- Vector embeddings stored in pgvector column for similarity search
-- Full-text search capabilities
-
-### 7. Notification
-- Gmail API sends structured summary email
-- Includes processing statistics, top entities, full JSON attachment
-- SMTP fallback if Gmail unavailable
+Parsing stage now includes LibreOffice conversion when available; OCR stage calls Tesseract via CLI.
 
 ## Configuration Examples
 
-### Google Cloud Services (Recommended)
-```json
-{
-  "Services": {
-    "Parser": "Google",
-    "OCR": "Google", 
-    "Embeddings": "Google",
-    "EntityExtraction": "Google",
-    "Notifications": "Google"
-  }
-}
-```
-
-### OSS Fallback Mode
+### Default OSS Mode
 ```json
 {
   "Services": {
     "Parser": "OSS",
     "OCR": "OSS",
-    "Embeddings": "OSS", 
+    "Embeddings": "OSS",
     "EntityExtraction": "OSS",
     "Notifications": "OSS"
+  },
+  "LibreOffice": {
+    "Enabled": true,
+    "BinaryPath": "soffice",
+    "TimeoutSeconds": 120
+  },
+  "Tesseract": {
+    "Enabled": true,
+    "BinaryPath": "tesseract",
+    "Languages": "eng",
+    "TimeoutSeconds": 120
+  }
+}
+```
+
+### Lightweight Mode
+```json
+{
+  "Services": {
+    "Parser": "SIMPLE",
+    "OCR": "SIMPLE",
+    "Embeddings": "OSS",
+    "EntityExtraction": "OSS",
+    "Notifications": "OSS"
+  },
+  "LibreOffice": {
+    "Enabled": false
+  },
+  "Tesseract": {
+    "Enabled": false
   }
 }
 ```
 
 ## Rate Limits & Quotas
 
-### Google Cloud API Limits (Default)
-- Document AI: 600 requests/minute
-- Vision API: 1800 requests/minute
-- Natural Language API: 600 requests/minute
-- Vertex AI: Varies by region/model
-
-### Best Practices
-- Implement client-side rate limiting
-- Use exponential backoff for retries
-- Monitor quota usage and set alerts
-- Consider batching requests where possible
+The OSS pipeline (LibreOffice + PdfPig + Tesseract + spaCy) does not enforce explicit rate limits beyond infrastructure throughput. Monitor CPU/RAM usage for LibreOffice/Tesseract containers if you scale horizontally.
 
 ## Monitoring & Debugging
 
-### Health Monitoring
-- `/health` endpoint checks all dependencies
-- Redis queue depth monitoring
-- Database connection health
-- Failed job tracking in DLQ
+Same endpoints as before; ensure LibreOffice and Tesseract binaries are installed and on the PATH for the API container/VM. Logs include conversion and OCR timing plus failure details.
 
-### Logging
-- Structured logging with correlation IDs
-- Processing stage tracking
-- Error details with stack traces
-- Performance metrics
-
-### Debugging Failed Jobs
-1. Check `/api/documents/staging?status=failed`
-2. Review Redis DLQ for poison messages
-3. Check logs for detailed error information
-4. Verify Google Cloud API quotas and permissions
-
-This completes the API usage guide. The system provides a comprehensive, intelligent document processing pipeline with Google Cloud AI integration and robust fallback mechanisms.
+This completes the API usage guide. The system provides an OSS-first document processing pipeline with pluggable providers for future enhancements.
