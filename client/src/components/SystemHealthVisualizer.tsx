@@ -89,10 +89,12 @@ export function SystemHealthVisualizer() {
       
       // Generate alerts based on metrics
       const newAlerts: SystemAlert[] = [];
+      const baseTimestamp = Date.now();
+      let alertCounter = 0;
       
       if (mainHealthTime > 2000) {
         newAlerts.push({
-          id: Date.now().toString(),
+          id: `${baseTimestamp}-${alertCounter++}`,
           type: 'warning',
           message: `Main API response time is high: ${mainHealthTime}ms`,
           timestamp: new Date().toLocaleTimeString(),
@@ -103,7 +105,7 @@ export function SystemHealthVisualizer() {
       microservicesHealth.forEach(service => {
         if (service.status === 'unhealthy') {
           newAlerts.push({
-            id: `${Date.now()}-${service.name}`,
+            id: `${baseTimestamp}-${alertCounter++}`,
             type: 'error',
             message: `${service.name} is unhealthy: ${service.error || 'Unknown error'}`,
             timestamp: new Date().toLocaleTimeString(),
@@ -111,7 +113,7 @@ export function SystemHealthVisualizer() {
           });
         } else if (service.responseTime && service.responseTime > 5000) {
           newAlerts.push({
-            id: `${Date.now()}-${service.name}-slow`,
+            id: `${baseTimestamp}-${alertCounter++}`,
             type: 'warning',
             message: `${service.name} is responding slowly: ${service.responseTime}ms`,
             timestamp: new Date().toLocaleTimeString(),
@@ -181,41 +183,34 @@ export function SystemHealthVisualizer() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">System Health Monitor</h2>
-          <p className="text-muted-foreground">
-            Real-time monitoring and analytics for system performance
-          </p>
-        </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-          >
-            <Activity className={`h-4 w-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
-            Auto Refresh {autoRefresh ? 'On' : 'Off'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={collectHealthData}
-            disabled={loading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
+      {/* Controls */}
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          variant={autoRefresh ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setAutoRefresh(!autoRefresh)}
+          className={autoRefresh ? 'shadow-lg ring-2 ring-primary/20' : ''}
+        >
+          <Activity className={`h-4 w-4 mr-2 ${autoRefresh ? 'animate-pulse' : ''}`} />
+          Auto Refresh {autoRefresh ? 'On' : 'Off'}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={collectHealthData}
+          disabled={loading}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Key Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">System Status</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            <Activity className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="flex items-center space-x-2">
@@ -227,45 +222,52 @@ export function SystemHealthVisualizer() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{avgResponseTime}ms</div>
-            <div className="flex items-center text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-primary">{avgResponseTime}ms</div>
+            <div className="flex items-center text-xs text-muted-foreground mt-1">
               {avgResponseTime < 1000 ? (
-                <TrendingUp className="h-3 w-3 text-green-500 mr-1" />
+                <>
+                  <TrendingUp className="h-3 w-3 text-success mr-1" />
+                  <span className="text-success">Excellent</span>
+                </>
               ) : (
-                <TrendingDown className="h-3 w-3 text-red-500 mr-1" />
+                <>
+                  <TrendingDown className="h-3 w-3 text-destructive mr-1" />
+                  <span className="text-destructive">Slow</span>
+                </>
               )}
-              Last {healthHistory.length} measurements
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Services</CardTitle>
-            <Server className="h-4 w-4 text-muted-foreground" />
+            <Server className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{healthyServices}/{totalServices}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-2xl font-bold text-success">{healthyServices}/{totalServices}</div>
+            <p className="text-xs text-muted-foreground mt-1">
               {totalServices > 0 ? Math.round((healthyServices / totalServices) * 100) : 0}% healthy
             </p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Alerts</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            <AlertTriangle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">{alerts.length}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className={`text-2xl font-bold ${alerts.length > 0 ? 'text-destructive' : 'text-success'}`}>
+              {alerts.length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
               {alerts.filter(a => a.type === 'error').length} errors, {alerts.filter(a => a.type === 'warning').length} warnings
             </p>
           </CardContent>
@@ -275,25 +277,37 @@ export function SystemHealthVisualizer() {
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Response Time Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Response Time Trend</CardTitle>
-            <CardDescription>Last {MAX_DATA_POINTS} health checks</CardDescription>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
+          <CardHeader className="bg-gradient-to-r from-card to-muted/30 rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle className="text-lg">Response Time Trend</CardTitle>
+                <CardDescription>Last {MAX_DATA_POINTS} health checks</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={healthHistory}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="timestamp" />
-                  <YAxis />
-                  <Tooltip />
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="timestamp" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'oklch(1 0.01 264)', 
+                      border: '1px solid oklch(0.90 0.01 264)',
+                      borderRadius: '8px'
+                    }}
+                  />
                   <Line 
                     type="monotone" 
                     dataKey="responseTime" 
-                    stroke="#8884d8" 
-                    strokeWidth={2}
-                    dot={{ fill: '#8884d8' }}
+                    stroke="oklch(0.55 0.22 264)" 
+                    strokeWidth={3}
+                    dot={{ fill: 'oklch(0.55 0.22 264)', r: 4 }}
+                    activeDot={{ r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -302,12 +316,17 @@ export function SystemHealthVisualizer() {
         </Card>
 
         {/* Service Status Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Service Status Distribution</CardTitle>
-            <CardDescription>Current status of all microservices</CardDescription>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
+          <CardHeader className="bg-gradient-to-r from-card to-muted/30 rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <Server className="h-5 w-5 text-success" />
+              <div>
+                <CardTitle className="text-lg">Service Status Distribution</CardTitle>
+                <CardDescription>Current status of all microservices</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -317,7 +336,7 @@ export function SystemHealthVisualizer() {
                     cy="50%"
                     labelLine={false}
                     label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
+                    outerRadius={90}
                     fill="#8884d8"
                     dataKey="value"
                   >
@@ -325,7 +344,13 @@ export function SystemHealthVisualizer() {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'oklch(1 0.01 264)', 
+                      border: '1px solid oklch(0.90 0.01 264)',
+                      borderRadius: '8px'
+                    }}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -334,62 +359,103 @@ export function SystemHealthVisualizer() {
       </div>
 
       {/* Microservices Detail */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Microservices Status</CardTitle>
-          <CardDescription>Detailed status of all registered microservices</CardDescription>
+      <Card className="hover-lift glass-effect ring-1 ring-border/50">
+        <CardHeader className="bg-gradient-to-r from-card to-muted/30 rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <Server className="h-5 w-5 text-primary" />
+            <div>
+              <CardTitle className="text-lg">Microservices Status</CardTitle>
+              <CardDescription>Detailed status of all registered microservices</CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {microservices.map((service) => (
-              <div key={service.name} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  {getStatusIcon(service.status)}
-                  <div>
-                    <h3 className="font-medium">{service.name}</h3>
-                    <p className="text-sm text-muted-foreground">{service.url}</p>
+        <CardContent className="pt-6">
+          <div className="space-y-3">
+            {microservices.map((service) => {
+              const statusColor = service.status === 'healthy' ? 'text-success bg-success/10 ring-success/20' :
+                                service.status === 'unhealthy' ? 'text-destructive bg-destructive/10 ring-destructive/20' :
+                                'text-warning bg-warning/10 ring-warning/20';
+              
+              return (
+                <div 
+                  key={service.name} 
+                  className="group relative rounded-xl border border-border/50 bg-gradient-to-br from-card to-muted/20 p-4 hover-lift transition-all"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-lg ring-1 ${statusColor}`}>
+                        {getStatusIcon(service.status)}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">{service.name}</h3>
+                        <p className="text-xs text-muted-foreground font-mono">{service.url}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-primary">{service.responseTime}ms</p>
+                        <p className="text-xs text-muted-foreground">{new Date(service.lastChecked).toLocaleTimeString()}</p>
+                      </div>
+                      <Badge 
+                        variant="outline"
+                        className={`${statusColor} border-0`}
+                      >
+                        {service.status}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-4">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{service.responseTime}ms</p>
-                    <p className="text-xs text-muted-foreground">{service.lastChecked}</p>
-                  </div>
-                  <Badge variant={service.status === 'healthy' ? 'default' : 'destructive'}>
-                    {service.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
 
       {/* Recent Alerts */}
       {alerts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Alerts</CardTitle>
-            <CardDescription>Latest system alerts and warnings</CardDescription>
+        <Card className="hover-lift glass-effect ring-1 ring-border/50">
+          <CardHeader className="bg-gradient-to-r from-card to-muted/30 rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              <div>
+                <CardTitle className="text-lg">Recent Alerts</CardTitle>
+                <CardDescription>Latest system alerts and warnings</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {alerts.slice(0, 10).map((alert) => (
-                <Alert key={alert.id} variant={alert.type === 'error' ? 'destructive' : 'default'}>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="font-medium">{alert.service}: </span>
-                        {alert.message}
+          <CardContent className="pt-6">
+            <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-custom pr-2">
+              {alerts.slice(0, 10).map((alert) => {
+                const alertConfig = {
+                  error: { color: 'text-destructive', bgColor: 'bg-destructive/10', ringColor: 'ring-destructive/20' },
+                  warning: { color: 'text-warning', bgColor: 'bg-warning/10', ringColor: 'ring-warning/20' },
+                  info: { color: 'text-primary', bgColor: 'bg-primary/10', ringColor: 'ring-primary/20' }
+                };
+                
+                const config = alertConfig[alert.type];
+                
+                return (
+                  <div 
+                    key={alert.id}
+                    className={`rounded-xl p-3 ring-1 ${config.bgColor} ${config.ringColor}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className={`h-4 w-4 flex-shrink-0 mt-0.5 ${config.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <span className={`font-semibold text-sm ${config.color}`}>{alert.service}: </span>
+                            <span className="text-sm">{alert.message}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {alert.timestamp}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {alert.timestamp}
-                      </span>
                     </div>
-                  </AlertDescription>
-                </Alert>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

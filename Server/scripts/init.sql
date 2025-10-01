@@ -41,7 +41,7 @@ CREATE TABLE documents (
     canonical JSONB NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    embedding VECTOR(1536) -- Default dimension for OpenAI/Vertex embeddings
+    embedding VECTOR(300) -- spaCy/SentenceTransformer default dimensions
 );
 
 -- Create indexes for performance
