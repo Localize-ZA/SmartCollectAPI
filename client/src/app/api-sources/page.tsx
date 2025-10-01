@@ -13,8 +13,13 @@ interface ApiSource {
   endpointUrl: string;
   httpMethod: string;
   authType?: string;
+  authLocation?: string;
+  headerName?: string;
+  queryParam?: string;
+  hasApiKey?: boolean;
   enabled: boolean;
   lastRunAt?: string;
+  lastUsedAt?: string;
   lastStatus?: string;
   consecutiveFailures: number;
   createdAt: string;
@@ -191,6 +196,11 @@ export default function ApiSourcesPage() {
                         🔐 {source.authType}
                       </span>
                     )}
+                    {source.hasApiKey && (
+                      <span className="px-2 py-1 bg-emerald-500/20 text-emerald-300 text-xs rounded-md border border-emerald-500/30">
+                        Key set
+                      </span>
+                    )}
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input
                         type="checkbox"
@@ -221,6 +231,12 @@ export default function ApiSourcesPage() {
                         </span>
                       </div>
                     )}
+                    {source.lastUsedAt && (
+                      <div>
+                        <span className="text-gray-500">Key Used: </span>
+                        <span className="text-gray-300">{new Date(source.lastUsedAt).toLocaleString()}</span>
+                      </div>
+                    )}
                     {source.lastStatus && (
                       <div>
                         <span className="text-gray-500">Status: </span>
@@ -234,6 +250,15 @@ export default function ApiSourcesPage() {
                         <span className="text-red-400">
                           ⚠️ {source.consecutiveFailures} consecutive failures
                         </span>
+                      </div>
+                    )}
+                    {source.authType === "ApiKey" && (
+                      <div className="text-gray-400">
+                        Auth: {source.authLocation === "query" ? (
+                          <>Query param <span className="text-gray-300">{source.queryParam || "api_key"}</span></>
+                        ) : (
+                          <>Header <span className="text-gray-300">{source.headerName || "X-API-Key"}</span></>
+                        )}
                       </div>
                     )}
                   </div>

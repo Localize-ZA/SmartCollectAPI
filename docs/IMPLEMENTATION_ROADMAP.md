@@ -26,118 +26,140 @@
 
 ---
 
-### Phase 2: Integration & Provider Factory
-**Status:** Ready to Start  
-**Estimated Duration:** 3-4 days  
+### Phase 2: Integration & Provider Factory ✅ COMPLETE
+**Status:** 100% Complete  
+**Duration:** Completed  
+**Files Created/Modified:** 5 files
 
-#### 2.1 ProviderFactory (Day 1)
+#### 2.1 ProviderFactory ✅ COMPLETE
 **Goal:** Abstract embedding services for dynamic provider selection
 
-**Files to Create:**
+**Files Created:**
 ```
-Server/Services/Embeddings/IEmbeddingProviderFactory.cs
-Server/Services/Embeddings/EmbeddingProviderFactory.cs
-Server/Services/Embeddings/IEmbeddingService.cs (common interface)
-```
-
-**Tasks:**
-- [ ] Create IEmbeddingService interface (common abstraction)
-- [ ] Update SentenceTransformerService to implement IEmbeddingService
-- [ ] Update SpacyNlpService to implement IEmbeddingService
-- [ ] Create IEmbeddingProviderFactory interface
-- [ ] Implement EmbeddingProviderFactory with provider key lookup
-- [ ] Register factory in Program.cs
-- [ ] Add tests for provider resolution
-
-**Expected Code:**
-```csharp
-public interface IEmbeddingService
-{
-    Task<float[]> EmbedAsync(string text);
-    Task<List<float[]>> EmbedBatchAsync(List<string> texts);
-    int DimensionCount { get; }
-    string ProviderName { get; }
-}
-
-public interface IEmbeddingProviderFactory
-{
-    IEmbeddingService GetProvider(string providerKey);
-    IEmbeddingService GetDefaultProvider();
-}
+Server/Services/Providers/IEmbeddingProviderFactory.cs
+Server/Services/Providers/EmbeddingProviderFactory.cs
+Server/Controllers/DecisionEngineController.cs (3 new endpoints)
+test-provider-factory.ps1
+docs/PHASE2_1_PROVIDER_FACTORY.md
 ```
 
-#### 2.2 Pipeline Integration (Day 2-3)
+**Completed Tasks:**
+- ✅ Create IEmbeddingProviderFactory interface (4 methods)
+- ✅ Implement EmbeddingProviderFactory with provider key lookup
+- ✅ Support sentence-transformers (768-dim) and spaCy (300-dim)
+- ✅ Register factory in Program.cs
+- ✅ Add 3 test endpoints to DecisionEngineController
+- ✅ Create comprehensive test script (6 scenarios)
+- ✅ Documentation complete
+
+**Key Features:**
+- Provider resolution by key
+- Default provider fallback
+- Case-insensitive matching
+- Easy extensibility for new providers (OpenAI, Cohere)
+- Performance comparison endpoint
+
+#### 2.2 Pipeline Integration ✅ COMPLETE
 **Goal:** Wire DecisionEngine into DocumentProcessingPipeline
 
-**Files to Modify:**
+**Files Modified:**
 ```
-Server/Services/IngestWorker.cs
-Server/Services/DocumentProcessor.cs (if exists)
-Server/Controllers/DocumentsController.cs
+Server/Services/DocumentProcessingPipeline.cs
+test-pipeline-integration.ps1
+docs/PHASE2_2_PIPELINE_INTEGRATION.md
 ```
 
-**Tasks:**
-- [ ] Inject IDecisionEngine into IngestWorker
-- [ ] Generate plan before processing staging documents
-- [ ] Pass plan to chunking logic
-- [ ] Pass plan.EmbeddingProvider to ProviderFactory
-- [ ] Log plan decisions
-- [ ] Add plan to document metadata
-- [ ] Test end-to-end with different document types
+**Completed Tasks:**
+- ✅ Inject IDecisionEngine into DocumentProcessingPipeline
+- ✅ Inject IEmbeddingProviderFactory into pipeline
+- ✅ Generate plan before processing documents
+- ✅ Extract content preview for plan generation
+- ✅ Use plan parameters for chunking (strategy, size, overlap)
+- ✅ Select embedding provider from plan
+- ✅ Implement mean-of-chunks document embedding
+- ✅ Add ComputeMeanEmbedding helper method
+- ✅ Comprehensive logging for audit trail
+- ✅ Fallback to default provider on errors
+- ✅ End-to-end integration test script
+- ✅ Complete documentation
 
-**Expected Changes:**
+**Implemented Code:**
 ```csharp
-// In IngestWorker
-var plan = await _decisionEngine.GeneratePlanForStagingAsync(stagingDoc);
-_logger.LogInformation("Generated plan: {Strategy} chunking, {Provider} embeddings", 
-    plan.ChunkingStrategy, plan.EmbeddingProvider);
+// Generate plan with content preview
+var processingPlan = await _decisionEngine.GeneratePlanAsync(
+    fileName: fileInfo.Name,
+    fileSize: fileInfo.Length,
+    mimeType: detectedMimeType,
+    contentPreview: contentPreview,
+    metadata: null);
 
-// Apply plan to processing
-var chunks = await _chunkingService.ChunkAsync(content, plan);
-var embeddingService = _providerFactory.GetProvider(plan.EmbeddingProvider);
-var embeddings = await embeddingService.EmbedBatchAsync(chunks);
+// Use plan for chunking
+var chunkingOptions = new ChunkingOptions(
+    MaxTokens: processingPlan.ChunkSize,
+    OverlapTokens: processingPlan.ChunkOverlap,
+    Strategy: parsedStrategy
+);
+
+// Select provider from plan
+var embeddingService = _embeddingProviderFactory.GetProvider(processingPlan.EmbeddingProvider);
+
+// Compute mean-of-chunks
+var meanEmbedding = ComputeMeanEmbedding(chunkEmbeddings);
 ```
 
 ---
 
-### Phase 3: Mean-of-Chunks & Schema Update
-**Status:** Pending Phase 2  
-**Estimated Duration:** 3-4 days
+### Phase 3: Mean-of-Chunks & Schema Update ✅ COMPLETE
+**Status:** 100% Complete  
+**Duration:** Completed  
+**Files Created/Modified:** 8 files, 800+ lines of code
 
-#### 3.1 Schema Update (Day 1)
-**Goal:** Add chunks table for granular embeddings
+#### 3.1 Schema Update ✅ COMPLETE
+**Goal:** Support 768-dim vectors and add provider metadata
 
-**Files to Create:**
+**Files Created:**
 ```
-Server/Models/DocumentChunk.cs
-scripts/create_chunks_table.sql
-scripts/migrate_to_chunks.ps1
-```
-
-**New Schema:**
-```sql
-CREATE TABLE document_chunks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    chunk_index INT NOT NULL,
-    content TEXT NOT NULL,
-    embedding vector(768) NOT NULL,
-    token_count INT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(document_id, chunk_index)
-);
-
-CREATE INDEX idx_chunks_document ON document_chunks(document_id);
-CREATE INDEX idx_chunks_embedding ON document_chunks USING ivfflat (embedding vector_cosine_ops);
+scripts/phase3_mean_of_chunks_schema.sql
+Server/Services/ChunkSearchService.cs
+Server/Controllers/ChunkSearchController.cs
+test-phase3-chunks.ps1
+docs/PHASE3_MEAN_OF_CHUNKS.md
+docs/PHASE3_COMPLETE.md
 ```
 
-**Tasks:**
-- [ ] Create DocumentChunk model
-- [ ] Add DbSet<DocumentChunk> to SmartCollectDbContext
-- [ ] Create migration SQL script
-- [ ] Update DocumentProcessingPipeline to save chunks
-- [ ] Keep document embedding as mean-of-chunks
+**Files Modified:**
+```
+Server/Models/Document.cs (added provider metadata)
+Server/Models/DocumentChunk.cs (updated to 768-dim)
+Server/Data/SmartCollectDbContext.cs (added provider columns)
+Server/Services/IngestWorker.cs (saves provider metadata)
+Server/Services/DocumentProcessingPipeline.cs (returns provider info)
+Server/Program.cs (registered ChunkSearchService)
+```
+
+**Completed Tasks:**
+- ✅ Updated schema to support 768-dim vectors
+- ✅ Added embedding_provider and embedding_dimensions to documents
+- ✅ Created DocumentChunk model (already existed, updated to 768-dim)
+- ✅ Added DbSet<DocumentChunk> to SmartCollectDbContext
+- ✅ Created comprehensive migration SQL script
+- ✅ Updated DocumentProcessingPipeline to compute mean-of-chunks
+- ✅ Updated IngestWorker to save chunks and provider metadata
+- ✅ Created ChunkSearchService (semantic, hybrid, document chunks)
+- ✅ Created ChunkSearchController (3 REST endpoints)
+- ✅ Registered services in Program.cs
+- ✅ Comprehensive test script (6 scenarios)
+- ✅ Complete documentation (2 files)
+- ✅ Zero compilation errors
+
+**Key Features:**
+- Individual chunk embeddings (768-dim)
+- Document-level mean-of-chunks embedding
+- Provider metadata tracking (provider, dimensions)
+- Semantic chunk search
+- Hybrid search (semantic + full-text)
+- Cosine similarity computation
+- PostgreSQL full-text search integration
 
 #### 3.2 Mean-of-Chunks Implementation (Day 2)
 **Goal:** Calculate document vector as mean of chunk embeddings

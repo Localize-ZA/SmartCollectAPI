@@ -14,7 +14,16 @@ CREATE TABLE IF NOT EXISTS api_sources (
     
     -- Authentication
     auth_type VARCHAR(50), -- 'None', 'Basic', 'Bearer', 'OAuth2', 'ApiKey'
-    auth_config_encrypted TEXT, -- Encrypted JSON with credentials
+    auth_config_encrypted TEXT, -- Encrypted JSON with credentials (DataProtection)
+    -- API Key (structured, AES-256-GCM)
+    auth_location VARCHAR(20), -- 'header' | 'query'
+    header_name VARCHAR(100),
+    query_param VARCHAR(100),
+    has_api_key BOOLEAN DEFAULT false,
+    key_version INTEGER,
+    api_key_ciphertext BYTEA,
+    api_key_iv BYTEA,
+    api_key_tag BYTEA,
     
     -- Headers & Body
     custom_headers JSONB, -- {"Authorization": "Bearer ...", "Content-Type": "application/json"}
@@ -43,6 +52,7 @@ CREATE TABLE IF NOT EXISTS api_sources (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     created_by VARCHAR(255),
+    last_used_at TIMESTAMPTZ,
     
     -- Constraints
     CONSTRAINT chk_api_type CHECK (api_type IN ('REST', 'GraphQL', 'SOAP')),
@@ -92,6 +102,9 @@ CREATE INDEX IF NOT EXISTS idx_api_sources_enabled ON api_sources(enabled) WHERE
 CREATE INDEX IF NOT EXISTS idx_api_sources_next_run ON api_sources(next_run_at) WHERE enabled = true;
 CREATE INDEX IF NOT EXISTS idx_api_sources_type ON api_sources(api_type);
 CREATE INDEX IF NOT EXISTS idx_api_sources_last_status ON api_sources(last_status);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_api_sources_name ON api_sources(name);
+CREATE INDEX IF NOT EXISTS idx_api_sources_endpoint_url ON api_sources(endpoint_url);
+CREATE INDEX IF NOT EXISTS idx_api_sources_has_api_key ON api_sources(has_api_key);
 
 CREATE INDEX IF NOT EXISTS idx_ingestion_logs_source_id ON api_ingestion_logs(source_id);
 CREATE INDEX IF NOT EXISTS idx_ingestion_logs_started_at ON api_ingestion_logs(started_at DESC);
@@ -120,7 +133,16 @@ COMMENT ON TABLE api_ingestion_logs IS 'Execution history and logs for API inges
 
 COMMENT ON COLUMN api_sources.response_path IS 'JSONPath expression to extract data array from API response';
 COMMENT ON COLUMN api_sources.field_mappings IS 'Map API response fields to document properties using JSONPath';
-COMMENT ON COLUMN api_sources.auth_config_encrypted IS 'Encrypted credentials stored using ASP.NET Data Protection API';
+COMMENT ON COLUMN api_sources.auth_config_encrypted IS 'Encrypted credentials stored using ASP.NET Data Protection API (legacy/general)';
+COMMENT ON COLUMN api_sources.auth_location IS 'Where to apply API key (header or query)';
+COMMENT ON COLUMN api_sources.header_name IS 'Header name for API key when auth_location=header';
+COMMENT ON COLUMN api_sources.query_param IS 'Query string parameter name when auth_location=query';
+COMMENT ON COLUMN api_sources.has_api_key IS 'Flag indicating if an API key is set';
+COMMENT ON COLUMN api_sources.key_version IS 'Master key version used for AES-GCM encryption';
+COMMENT ON COLUMN api_sources.api_key_ciphertext IS 'AES-GCM ciphertext bytes of the API key';
+COMMENT ON COLUMN api_sources.api_key_iv IS 'AES-GCM IV (nonce) bytes';
+COMMENT ON COLUMN api_sources.api_key_tag IS 'AES-GCM authentication tag bytes';
+COMMENT ON COLUMN api_sources.last_used_at IS 'Timestamp when this source was last used for authentication';
 COMMENT ON COLUMN api_sources.schedule_cron IS 'Cron expression for scheduling (e.g., "0 */6 * * *" for every 6 hours)';
 
 -- Sample data for testing (optional - remove in production)

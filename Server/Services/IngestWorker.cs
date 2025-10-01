@@ -141,7 +141,9 @@ public class IngestWorker : BackgroundService
                                 Canonical = JsonSerializer.SerializeToNode(pipelineResult.CanonicalDocument)!,
                                 CreatedAt = DateTimeOffset.UtcNow,
                                 UpdatedAt = DateTimeOffset.UtcNow,
-                                Embedding = null // Will be set if embedding was successful
+                                Embedding = null, // Will be set if embedding was successful
+                                EmbeddingProvider = pipelineResult.EmbeddingProvider,
+                                EmbeddingDimensions = pipelineResult.EmbeddingDimensions
                             };
 
                             // Try to get embedding from the canonical document
@@ -153,8 +155,9 @@ public class IngestWorker : BackgroundService
                                     // Convert float[] to Pgvector.Vector if necessary
                                     document.Embedding = new Vector(pipelineResult.CanonicalDocument.Embedding);
                                 }
-                                _logger.LogInformation("Document processed with {Dimensions} embedding dimensions", 
-                                    pipelineResult.CanonicalDocument.EmbeddingDim);
+                                _logger.LogInformation("Document processed with {Dimensions} embedding dimensions using provider {Provider}", 
+                                    pipelineResult.CanonicalDocument.EmbeddingDim,
+                                    pipelineResult.EmbeddingProvider ?? "unknown");
                             }
 
                             dbContext.Documents.Add(document);

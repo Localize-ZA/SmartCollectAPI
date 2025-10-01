@@ -31,7 +31,7 @@ public class DocumentChunk
     [Required]
     public int EndOffset { get; set; }
 
-    [Column("embedding")]
+    [Column("embedding", TypeName = "vector(768)")]
     public Vector? Embedding { get; set; }
 
     [Column("metadata", TypeName = "jsonb")]

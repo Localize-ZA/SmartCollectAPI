@@ -173,7 +173,8 @@ namespace SmartCollectAPI
                 {
                     client.Timeout = TimeSpan.FromMinutes(5);
                 });
-                builder.Services.AddDataProtection(); // For encrypting auth credentials
+                builder.Services.AddDataProtection(); // For encrypting general auth credentials (legacy/general)
+                builder.Services.AddSingleton<SmartCollectAPI.Services.ISecretCryptoService, SmartCollectAPI.Services.SecretCryptoService>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IAuthenticationManager, SmartCollectAPI.Services.ApiIngestion.AuthenticationManager>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClient, SmartCollectAPI.Services.ApiIngestion.RestApiClient>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IDataTransformer, SmartCollectAPI.Services.ApiIngestion.DataTransformer>();
@@ -181,6 +182,9 @@ namespace SmartCollectAPI
                 
                 // Register Decision Engine (Phase 1)
                 builder.Services.AddScoped<SmartCollectAPI.Services.Pipeline.IDecisionEngine, SmartCollectAPI.Services.Pipeline.RuleBasedDecisionEngine>();
+                
+                // Register Chunk Search Service (Phase 3)
+                builder.Services.AddScoped<SmartCollectAPI.Services.IChunkSearchService, SmartCollectAPI.Services.ChunkSearchService>();
                 
                 // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();

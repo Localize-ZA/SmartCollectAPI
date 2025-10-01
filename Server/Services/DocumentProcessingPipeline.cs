@@ -134,24 +134,42 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 entityResult = await entityService.ExtractEntitiesAsync(extractedText, cancellationToken);
             }
 
-            // Step 5: Chunk text for better semantic search
+            // Step 5: Chunk text for better semantic search (using plan parameters)
             List<TextChunk>? chunks = null;
             if (!string.IsNullOrWhiteSpace(extractedText) && extractedText.Length > 2000)
             {
-                _logger.LogInformation("Chunking text ({Length} chars) for better semantic search", extractedText.Length);
+                _logger.LogInformation("Chunking text ({Length} chars) using strategy: {Strategy}, size: {Size}, overlap: {Overlap}", 
+                    extractedText.Length, processingPlan.ChunkingStrategy, processingPlan.ChunkSize, processingPlan.ChunkOverlap);
+                
+                // Parse the chunking strategy from the plan
+                var strategy = Enum.TryParse<ChunkingStrategy>(processingPlan.ChunkingStrategy, ignoreCase: true, out var parsedStrategy)
+                    ? parsedStrategy
+                    : ChunkingStrategy.SlidingWindow;
                 
                 var chunkingOptions = new ChunkingOptions(
-                    MaxTokens: 512,      // ~2048 characters per chunk
-                    OverlapTokens: 100,   // ~400 character overlap
-                    Strategy: ChunkingStrategy.SlidingWindow
+                    MaxTokens: processingPlan.ChunkSize,
+                    OverlapTokens: processingPlan.ChunkOverlap,
+                    Strategy: strategy
                 );
                 
                 chunks = _chunkingService.ChunkText(extractedText, chunkingOptions);
                 _logger.LogInformation("Created {ChunkCount} chunks from document", chunks.Count);
             }
 
-            // Step 6: Generate embeddings for chunks or full document
-            var embeddingService = _providerFactory.GetEmbeddingService();
+            // Step 6: Generate embeddings for chunks or full document (using provider from plan)
+            IEmbeddingService embeddingService;
+            try
+            {
+                embeddingService = _embeddingProviderFactory.GetProvider(processingPlan.EmbeddingProvider);
+                _logger.LogInformation("Using embedding provider: {Provider} (from plan)", processingPlan.EmbeddingProvider);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to get embedding provider {Provider}, falling back to default", 
+                    processingPlan.EmbeddingProvider);
+                embeddingService = _embeddingProviderFactory.GetDefaultProvider();
+            }
+
             EmbeddingResult embeddingResult;
             List<ChunkEmbedding>? chunkEmbeddings = null;
             
@@ -177,12 +195,16 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                     }
                 }
                 
-                _logger.LogInformation("Generated embeddings for {Count} chunks", chunkEmbeddings.Count);
+                _logger.LogInformation("Generated embeddings for {Count} chunks using {Provider}", 
+                    chunkEmbeddings.Count, processingPlan.EmbeddingProvider);
                 
-                // Use first chunk's embedding as document-level embedding (or compute average)
+                // Compute mean-of-chunks as document-level embedding
                 if (chunkEmbeddings.Count > 0 && chunkEmbeddings[0].Embedding != null)
                 {
-                    embeddingResult = new EmbeddingResult(chunkEmbeddings[0].Embedding!);
+                    var meanEmbedding = ComputeMeanEmbedding(chunkEmbeddings);
+                    embeddingResult = new EmbeddingResult(meanEmbedding);
+                    _logger.LogInformation("Computed mean-of-chunks embedding ({Dimensions} dims) from {Count} chunks",
+                        meanEmbedding.ToArray().Length, chunkEmbeddings.Count);
                 }
                 else
                 {
@@ -213,7 +235,9 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 Success: true,
                 CanonicalDocument: canonicalDoc,
                 ChunkEmbeddings: chunkEmbeddings,
-                NotificationResult: notificationResult
+                NotificationResult: notificationResult,
+                EmbeddingProvider: processingPlan.EmbeddingProvider,
+                EmbeddingDimensions: embeddingService.EmbeddingDimensions
             );
         }
         catch (Exception ex)
@@ -546,6 +570,57 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 
         return textToEmbed;
     }
+
+    /// <summary>
+    /// Compute the mean embedding from a list of chunk embeddings.
+    /// This creates a document-level embedding that represents the average semantic meaning.
+    /// </summary>
+    private static Vector ComputeMeanEmbedding(List<ChunkEmbedding> chunkEmbeddings)
+    {
+        if (chunkEmbeddings == null || chunkEmbeddings.Count == 0)
+        {
+            throw new ArgumentException("Cannot compute mean of empty chunk list", nameof(chunkEmbeddings));
+        }
+
+        // Get dimensions from first chunk
+        var firstEmbedding = chunkEmbeddings[0].Embedding;
+        if (firstEmbedding == null)
+        {
+            throw new ArgumentException("First chunk has no embedding", nameof(chunkEmbeddings));
+        }
+
+        var dims = firstEmbedding.ToArray().Length;
+        var sum = new float[dims];
+
+        // Sum all embeddings
+        int validCount = 0;
+        foreach (var chunk in chunkEmbeddings)
+        {
+            if (chunk.Embedding != null)
+            {
+                var embedding = chunk.Embedding.ToArray();
+                if (embedding.Length == dims)
+                {
+                    for (int i = 0; i < dims; i++)
+                    {
+                        sum[i] += embedding[i];
+                    }
+                    validCount++;
+                }
+            }
+        }
+
+        // Compute average
+        if (validCount > 0)
+        {
+            for (int i = 0; i < dims; i++)
+            {
+                sum[i] /= validCount;
+            }
+        }
+
+        return new Vector(sum);
+    }
 }
 
 public record PipelineResult(
@@ -553,7 +628,9 @@ public record PipelineResult(
     CanonicalDocument? CanonicalDocument,
     List<ChunkEmbedding>? ChunkEmbeddings = null,
     NotificationResult? NotificationResult = null,
-    string? ErrorMessage = null
+    string? ErrorMessage = null,
+    string? EmbeddingProvider = null,
+    int? EmbeddingDimensions = null
 );
 
 public record ChunkEmbedding(

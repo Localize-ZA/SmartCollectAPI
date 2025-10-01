@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SmartCollectAPI.Data;
 using SmartCollectAPI.Models;
 using SmartCollectAPI.Services.ApiIngestion;
+using SmartCollectAPI.Services;
 
 namespace SmartCollectAPI.Controllers;
 
@@ -16,6 +17,7 @@ public class ApiSourcesController : ControllerBase
     private readonly IApiClient _apiClient;
     private readonly IDataTransformer _transformer;
     private readonly IApiIngestionService _ingestionService;
+    private readonly ISecretCryptoService _crypto;
 
     public ApiSourcesController(
         SmartCollectDbContext context,
@@ -23,7 +25,8 @@ public class ApiSourcesController : ControllerBase
         IAuthenticationManager authManager,
         IApiClient apiClient,
         IDataTransformer transformer,
-        IApiIngestionService ingestionService)
+        IApiIngestionService ingestionService,
+        ISecretCryptoService crypto)
     {
         _context = context;
         _logger = logger;
@@ -31,6 +34,7 @@ public class ApiSourcesController : ControllerBase
         _apiClient = apiClient;
         _transformer = transformer;
         _ingestionService = ingestionService;
+        _crypto = crypto;
     }
 
     /// <summary>
@@ -119,6 +123,11 @@ public class ApiSourcesController : ControllerBase
                 return BadRequest(new { error = "Name and EndpointUrl are required" });
             }
 
+            if (!ValidateHttps(dto.EndpointUrl))
+            {
+                return BadRequest(new { error = "EndpointUrl must start with https://" });
+            }
+
             var source = new ApiSource
             {
                 Id = Guid.NewGuid(),
@@ -141,9 +150,27 @@ public class ApiSourcesController : ControllerBase
                 UpdatedAt = DateTime.UtcNow
             };
 
-            // Encrypt authentication config
-            if (dto.AuthConfig != null && dto.AuthConfig.Count > 0)
+            // Encrypt/store API key if provided for ApiKey auth
+            if (!string.IsNullOrEmpty(source.AuthType) && source.AuthType.Equals("ApiKey", StringComparison.OrdinalIgnoreCase))
             {
+                source.AuthLocation = dto.AuthLocation ?? dto.AuthConfig?.GetValueOrDefault("in") ?? "header";
+                source.HeaderName = dto.HeaderName ?? dto.AuthConfig?.GetValueOrDefault("header") ?? "X-API-Key";
+                source.QueryParam = dto.QueryParam ?? dto.AuthConfig?.GetValueOrDefault("param") ?? "api_key";
+
+                var apiKey = dto.ApiKey ?? dto.AuthConfig?.GetValueOrDefault("key");
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    var cipher = _crypto.Encrypt(apiKey);
+                    source.ApiKeyCiphertext = cipher.Ciphertext;
+                    source.ApiKeyIv = cipher.Iv;
+                    source.ApiKeyTag = cipher.Tag;
+                    source.KeyVersion = cipher.Version;
+                    source.HasApiKey = true;
+                }
+            }
+            else if (dto.AuthConfig != null && dto.AuthConfig.Count > 0)
+            {
+                // Legacy/general secret storage
                 source.AuthConfigEncrypted = _authManager.EncryptCredentials(dto.AuthConfig);
             }
 
@@ -184,7 +211,14 @@ public class ApiSourcesController : ControllerBase
             if (dto.Name != null) source.Name = dto.Name;
             if (dto.Description != null) source.Description = dto.Description;
             if (dto.ApiType != null) source.ApiType = dto.ApiType;
-            if (dto.EndpointUrl != null) source.EndpointUrl = dto.EndpointUrl;
+            if (dto.EndpointUrl != null)
+            {
+                if (!ValidateHttps(dto.EndpointUrl))
+                {
+                    return BadRequest(new { error = "EndpointUrl must start with https://" });
+                }
+                source.EndpointUrl = dto.EndpointUrl;
+            }
             if (dto.HttpMethod != null) source.HttpMethod = dto.HttpMethod;
             if (dto.AuthType != null) source.AuthType = dto.AuthType;
             if (dto.CustomHeaders != null) source.CustomHeaders = dto.CustomHeaders;
@@ -198,7 +232,24 @@ public class ApiSourcesController : ControllerBase
             if (dto.Enabled.HasValue) source.Enabled = dto.Enabled.Value;
 
             // Update authentication config if provided
-            if (dto.AuthConfig != null && dto.AuthConfig.Count > 0)
+            if (!string.IsNullOrEmpty(source.AuthType) && source.AuthType.Equals("ApiKey", StringComparison.OrdinalIgnoreCase))
+            {
+                if (dto.AuthLocation != null) source.AuthLocation = dto.AuthLocation;
+                if (dto.HeaderName != null) source.HeaderName = dto.HeaderName;
+                if (dto.QueryParam != null) source.QueryParam = dto.QueryParam;
+
+                var incomingKey = dto.ApiKey ?? dto.AuthConfig?.GetValueOrDefault("key");
+                if (!string.IsNullOrEmpty(incomingKey))
+                {
+                    var cipher = _crypto.Encrypt(incomingKey);
+                    source.ApiKeyCiphertext = cipher.Ciphertext;
+                    source.ApiKeyIv = cipher.Iv;
+                    source.ApiKeyTag = cipher.Tag;
+                    source.KeyVersion = cipher.Version;
+                    source.HasApiKey = true;
+                }
+            }
+            else if (dto.AuthConfig != null && dto.AuthConfig.Count > 0)
             {
                 source.AuthConfigEncrypted = _authManager.EncryptCredentials(dto.AuthConfig);
             }
@@ -388,6 +439,10 @@ public class ApiSourcesController : ControllerBase
             EndpointUrl = source.EndpointUrl,
             HttpMethod = source.HttpMethod,
             AuthType = source.AuthType,
+            AuthLocation = source.AuthLocation,
+            HeaderName = source.HeaderName,
+            QueryParam = source.QueryParam,
+            HasApiKey = source.HasApiKey,
             CustomHeaders = source.CustomHeaders,
             RequestBody = source.RequestBody,
             QueryParams = source.QueryParams,
@@ -402,8 +457,18 @@ public class ApiSourcesController : ControllerBase
             LastStatus = source.LastStatus,
             ConsecutiveFailures = source.ConsecutiveFailures,
             CreatedAt = source.CreatedAt,
-            UpdatedAt = source.UpdatedAt
+            UpdatedAt = source.UpdatedAt,
+            LastUsedAt = source.LastUsedAt
         };
+    }
+
+    private static bool ValidateHttps(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
     }
 
     private ApiIngestionLogDto MapLogToDto(ApiIngestionLog log)
@@ -439,6 +504,10 @@ public class ApiSourceDto
     public string EndpointUrl { get; set; } = string.Empty;
     public string HttpMethod { get; set; } = string.Empty;
     public string? AuthType { get; set; }
+    public string? AuthLocation { get; set; }
+    public string? HeaderName { get; set; }
+    public string? QueryParam { get; set; }
+    public bool HasApiKey { get; set; }
     public string? CustomHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? QueryParams { get; set; }
@@ -454,6 +523,7 @@ public class ApiSourceDto
     public int ConsecutiveFailures { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public DateTime? LastUsedAt { get; set; }
 }
 
 public class CreateApiSourceDto
@@ -465,6 +535,10 @@ public class CreateApiSourceDto
     public string? HttpMethod { get; set; }
     public string? AuthType { get; set; }
     public Dictionary<string, string>? AuthConfig { get; set; }
+    public string? AuthLocation { get; set; }
+    public string? HeaderName { get; set; }
+    public string? QueryParam { get; set; }
+    public string? ApiKey { get; set; }
     public string? CustomHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? QueryParams { get; set; }
@@ -485,6 +559,10 @@ public class UpdateApiSourceDto
     public string? HttpMethod { get; set; }
     public string? AuthType { get; set; }
     public Dictionary<string, string>? AuthConfig { get; set; }
+    public string? AuthLocation { get; set; }
+    public string? HeaderName { get; set; }
+    public string? QueryParam { get; set; }
+    public string? ApiKey { get; set; }
     public string? CustomHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? QueryParams { get; set; }

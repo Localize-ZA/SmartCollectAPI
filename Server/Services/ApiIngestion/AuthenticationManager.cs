@@ -3,6 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using SmartCollectAPI.Models;
+using SmartCollectAPI.Services;
+using SmartCollectAPI.Data;
 
 namespace SmartCollectAPI.Services.ApiIngestion;
 
@@ -17,13 +19,19 @@ public class AuthenticationManager : IAuthenticationManager
 {
     private readonly IDataProtector _protector;
     private readonly ILogger<AuthenticationManager> _logger;
+    private readonly ISecretCryptoService _crypto;
+    private readonly SmartCollectDbContext _db;
 
     public AuthenticationManager(
         IDataProtectionProvider dataProtectionProvider,
-        ILogger<AuthenticationManager> logger)
+        ILogger<AuthenticationManager> logger,
+        ISecretCryptoService crypto,
+        SmartCollectDbContext db)
     {
         _protector = dataProtectionProvider.CreateProtector("ApiIngestion.AuthConfig");
         _logger = logger;
+        _crypto = crypto;
+        _db = db;
     }
 
     public async Task ApplyAuthenticationAsync(
@@ -58,7 +66,7 @@ public class AuthenticationManager : IAuthenticationManager
                     break;
 
                 case "APIKEY":
-                    ApplyApiKeyAuth(request, authConfig);
+                    await ApplyApiKeyAuthAsync(request, source, authConfig, cancellationToken);
                     break;
 
                 case "OAUTH2":
@@ -116,35 +124,58 @@ public class AuthenticationManager : IAuthenticationManager
         _logger.LogDebug("Applied Bearer token authentication");
     }
 
-    private void ApplyApiKeyAuth(HttpRequestMessage request, Dictionary<string, string> authConfig)
+    private async Task ApplyApiKeyAuthAsync(HttpRequestMessage request, ApiSource source, Dictionary<string, string> legacyAuthConfig, CancellationToken cancellationToken)
     {
-        if (!authConfig.TryGetValue("key", out var apiKey))
+        string? apiKey = null;
+        string location;
+        string? headerName = null;
+        string? queryParam = null;
+
+        // Prefer structured encrypted fields
+        if (source.HasApiKey && source.ApiKeyCiphertext != null && source.ApiKeyIv != null && source.ApiKeyTag != null && source.KeyVersion.HasValue)
         {
-            throw new InvalidOperationException("API Key auth requires 'key' in auth config");
-        }
-
-        // Get header name (default to X-API-Key)
-        var headerName = authConfig.GetValueOrDefault("header", "X-API-Key");
-
-        // Check if it should be in query parameter instead
-        if (authConfig.TryGetValue("in", out var location) && 
-            location.Equals("query", StringComparison.OrdinalIgnoreCase))
-        {
-            var paramName = authConfig.GetValueOrDefault("param", "api_key");
-            var uriBuilder = new UriBuilder(request.RequestUri!);
-            var query = string.IsNullOrEmpty(uriBuilder.Query)
-                ? $"{paramName}={Uri.EscapeDataString(apiKey)}"
-                : $"{uriBuilder.Query.TrimStart('?')}&{paramName}={Uri.EscapeDataString(apiKey)}";
-            uriBuilder.Query = query;
-            request.RequestUri = uriBuilder.Uri;
-
-            _logger.LogDebug("Applied API Key authentication in query parameter {ParamName}", paramName);
+            apiKey = _crypto.Decrypt(source.ApiKeyCiphertext, source.ApiKeyIv, source.ApiKeyTag, source.KeyVersion.Value);
+            location = string.IsNullOrWhiteSpace(source.AuthLocation) ? "header" : source.AuthLocation!;
+            headerName = string.IsNullOrWhiteSpace(source.HeaderName) ? "X-API-Key" : source.HeaderName;
+            queryParam = string.IsNullOrWhiteSpace(source.QueryParam) ? "api_key" : source.QueryParam;
         }
         else
         {
-            request.Headers.TryAddWithoutValidation(headerName, apiKey);
-            _logger.LogDebug("Applied API Key authentication in header {HeaderName}", headerName);
+            // Fallback to legacy encrypted JSON config if present
+            if (!legacyAuthConfig.TryGetValue("key", out var legacyKey))
+            {
+                throw new InvalidOperationException("API Key auth requires a configured key");
+            }
+            apiKey = legacyKey;
+            location = legacyAuthConfig.TryGetValue("in", out var loc) ? loc : "header";
+            headerName = legacyAuthConfig.GetValueOrDefault("header", "X-API-Key");
+            queryParam = legacyAuthConfig.GetValueOrDefault("param", "api_key");
         }
+
+        // Apply without logging sensitive values
+        if (string.Equals(location, "query", StringComparison.OrdinalIgnoreCase))
+        {
+            var paramName = queryParam ?? "api_key";
+            var uriBuilder = new UriBuilder(request.RequestUri!);
+            var query = string.IsNullOrEmpty(uriBuilder.Query)
+                ? $"{paramName}={Uri.EscapeDataString(apiKey!)}"
+                : $"{uriBuilder.Query.TrimStart('?')}&{paramName}={Uri.EscapeDataString(apiKey!)}";
+            uriBuilder.Query = query;
+            request.RequestUri = uriBuilder.Uri;
+        }
+        else
+        {
+            var h = headerName ?? "X-API-Key";
+            request.Headers.TryAddWithoutValidation(h, apiKey);
+        }
+
+        // Try update last_used_at without throwing on failure
+        try
+        {
+            source.LastUsedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch { /* best-effort */ }
     }
 
     private async Task ApplyOAuth2Async(

@@ -13,6 +13,10 @@ public class Document
     public JsonNode Canonical { get; set; } = new JsonObject();
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
-    [Column(TypeName = "vector(300)")]
-    public Vector? Embedding { get; set; } // pgvector embedding
+    
+    [Column(TypeName = "vector(768)")]
+    public Vector? Embedding { get; set; } // pgvector embedding (mean-of-chunks)
+    
+    public string? EmbeddingProvider { get; set; } // e.g., "sentence-transformers", "spacy"
+    public int? EmbeddingDimensions { get; set; } // Actual dimensions (768, 300, etc.)
 }

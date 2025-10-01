@@ -53,6 +53,11 @@ export function CreateApiSourceModal({
         authConfig: Object.keys(authConfig).length > 0 ? authConfig : undefined,
       };
 
+      // Clear sensitive key from state immediately after preparing payload
+      if (authConfig.key) {
+        setAuthConfig((prev) => ({ ...prev, key: "" }));
+      }
+
       // Remove empty strings
       Object.keys(payload).forEach((key) => {
         if (payload[key] === "") {
@@ -450,8 +455,7 @@ export function CreateApiSourceModal({
               <div className="flex-1 text-sm">
                 <p className="text-amber-300 font-medium">Credentials are encrypted</p>
                 <p className="text-amber-200/80">
-                  All authentication credentials are encrypted using ASP.NET Data Protection
-                  before being stored in the database. They cannot be retrieved in plain text.
+                  Secrets are encrypted at rest with AES-256-GCM and never returned by the API. Only masked status is shown.
                 </p>
               </div>
             </div>
@@ -566,3 +570,4 @@ export function CreateApiSourceModal({
     </div>
   );
 }
+

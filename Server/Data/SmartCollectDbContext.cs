@@ -56,10 +56,13 @@ public class SmartCollectDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("NOW()");
             entity.Property(e => e.Embedding).HasColumnName("embedding");
+            entity.Property(e => e.EmbeddingProvider).HasColumnName("embedding_provider");
+            entity.Property(e => e.EmbeddingDimensions).HasColumnName("embedding_dimensions");
 
             // Unique constraint on sha256
             entity.HasIndex(e => e.Sha256).IsUnique().HasDatabaseName("idx_documents_sha256");
             entity.HasIndex(e => e.CreatedAt).HasDatabaseName("idx_documents_created_at");
+            entity.HasIndex(e => e.EmbeddingProvider).HasDatabaseName("idx_documents_embedding_provider");
         });
 
         // Configure document_chunks table
@@ -101,6 +104,9 @@ public class SmartCollectDbContext : DbContext
             entity.HasIndex(e => e.NextRunAt).HasDatabaseName("idx_api_sources_next_run");
             entity.HasIndex(e => e.ApiType).HasDatabaseName("idx_api_sources_type");
             entity.HasIndex(e => e.LastStatus).HasDatabaseName("idx_api_sources_last_status");
+            entity.HasIndex(e => e.Name).IsUnique().HasDatabaseName("ux_api_sources_name");
+            entity.HasIndex(e => e.EndpointUrl).HasDatabaseName("idx_api_sources_endpoint_url");
+            entity.HasIndex(e => e.HasApiKey).HasDatabaseName("idx_api_sources_has_api_key");
         });
 
         // Configure api_ingestion_logs table
