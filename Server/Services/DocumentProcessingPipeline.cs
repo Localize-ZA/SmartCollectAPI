@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SmartCollectAPI.Models;
 using SmartCollectAPI.Services.Providers;
+using SmartCollectAPI.Services.Pipeline;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Pgvector;
@@ -22,6 +23,8 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
     private readonly IXmlParser _xmlParser;
     private readonly ICsvParser _csvParser;
     private readonly ITextChunkingService _chunkingService;
+    private readonly IDecisionEngine _decisionEngine;
+    private readonly IEmbeddingProviderFactory _embeddingProviderFactory;
 
     public DocumentProcessingPipeline(
         ILogger<DocumentProcessingPipeline> logger,
@@ -31,7 +34,9 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         IJsonParser jsonParser,
         IXmlParser xmlParser,
         ICsvParser csvParser,
-        ITextChunkingService chunkingService)
+        ITextChunkingService chunkingService,
+        IDecisionEngine decisionEngine,
+        IEmbeddingProviderFactory embeddingProviderFactory)
     {
         _logger = logger;
         _providerFactory = providerFactory;
@@ -41,6 +46,8 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         _xmlParser = xmlParser;
         _csvParser = csvParser;
         _chunkingService = chunkingService;
+        _decisionEngine = decisionEngine;
+        _embeddingProviderFactory = embeddingProviderFactory;
     }
 
     public async Task<PipelineResult> ProcessDocumentAsync(JobEnvelope job, CancellationToken cancellationToken = default)
@@ -59,6 +66,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             }
 
             await using var fileStream = File.OpenRead(absPath);
+            var fileInfo = new FileInfo(absPath);
             
             // Step 2: Detect content type if needed
             var detectedMimeType = job.MimeType;
@@ -69,6 +77,48 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             }
 
             _logger.LogInformation("Processing document with MIME type: {MimeType}", detectedMimeType);
+
+            // Step 2.5: Generate processing plan using Decision Engine
+            // Read a preview of the content for the decision engine
+            string? contentPreview = null;
+            try
+            {
+                if (fileStream.CanSeek)
+                {
+                    using var previewReader = new StreamReader(fileStream, leaveOpen: true);
+                    var previewBuffer = new char[500];
+                    var charsRead = await previewReader.ReadAsync(previewBuffer, 0, 500);
+                    contentPreview = new string(previewBuffer, 0, charsRead);
+                    fileStream.Position = 0; // Reset after preview
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read content preview, continuing without it");
+            }
+
+            var processingPlan = await _decisionEngine.GeneratePlanAsync(
+                fileName: fileInfo.Name,
+                fileSize: fileInfo.Length,
+                mimeType: detectedMimeType,
+                contentPreview: contentPreview,
+                metadata: null);
+
+            _logger.LogInformation("Generated processing plan for {FileName}: Provider={Provider}, Strategy={Strategy}, ChunkSize={ChunkSize}, RequiresOCR={RequiresOCR}, Language={Language}, Priority={Priority}, EstimatedCost={Cost}",
+                fileInfo.Name,
+                processingPlan.EmbeddingProvider,
+                processingPlan.ChunkingStrategy,
+                processingPlan.ChunkSize,
+                processingPlan.RequiresOCR,
+                processingPlan.Language,
+                processingPlan.Priority,
+                processingPlan.EstimatedCost);
+
+            // Log decision reasons for audit trail
+            if (processingPlan.DecisionReasons != null && processingPlan.DecisionReasons.Any())
+            {
+                _logger.LogInformation("Decision reasons: {Reasons}", string.Join("; ", processingPlan.DecisionReasons));
+            }
 
             // Step 3: Parse document based on type
             var parseResult = await ParseDocumentAsync(fileStream, detectedMimeType, cancellationToken);

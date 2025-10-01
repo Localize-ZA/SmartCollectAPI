@@ -15,7 +15,8 @@ import {
   BarChart3,
   FileText,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Globe
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,11 @@ const sidebarItems: SidebarItem[] = [
     title: "Alerts",
     href: "/alerts",
     icon: AlertTriangle,
+  },
+  {
+    title: "API Sources",
+    href: "/api-sources",
+    icon: Globe,
   },
 ];
 

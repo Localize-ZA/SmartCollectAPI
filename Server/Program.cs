@@ -161,8 +161,9 @@ namespace SmartCollectAPI
                 builder.Services.AddHttpClient<SentenceTransformerService>(); // High-quality 768-dim embeddings
                 builder.Services.AddScoped<SentenceTransformerService>();
 
-                // Register provider factory
+                // Register provider factories (Phase 2)
                 builder.Services.AddScoped<IProviderFactory, ProviderFactory>();
+                builder.Services.AddScoped<SmartCollectAPI.Services.Providers.IEmbeddingProviderFactory, SmartCollectAPI.Services.Providers.EmbeddingProviderFactory>();
 
                 // Register enhanced processing pipeline
                 builder.Services.AddScoped<SmartCollectAPI.Services.IDocumentProcessingPipeline, SmartCollectAPI.Services.DocumentProcessingPipeline>();
@@ -177,6 +178,9 @@ namespace SmartCollectAPI
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClient, SmartCollectAPI.Services.ApiIngestion.RestApiClient>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IDataTransformer, SmartCollectAPI.Services.ApiIngestion.DataTransformer>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiIngestionService, SmartCollectAPI.Services.ApiIngestion.ApiIngestionService>();
+                
+                // Register Decision Engine (Phase 1)
+                builder.Services.AddScoped<SmartCollectAPI.Services.Pipeline.IDecisionEngine, SmartCollectAPI.Services.Pipeline.RuleBasedDecisionEngine>();
                 
                 // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();

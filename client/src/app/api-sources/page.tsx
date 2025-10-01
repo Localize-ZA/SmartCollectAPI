@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, RefreshCw, Trash2, Edit, Play, TestTube } from "lucide-react";
 import { CreateApiSourceModal } from "@/components/CreateApiSourceModal";
+import { DashboardLayout } from "@/components/DashboardLayout";
 
 interface ApiSource {
   id: string;
@@ -73,7 +74,9 @@ export default function ApiSourcesPage() {
         );
         fetchSources(); // Refresh list
       } else {
-        alert(`❌ Ingestion failed: ${result.errorMessage}`);
+        // Handle both errorMessage (from normal flow) and error (from exception)
+        const errorMsg = result.errorMessage || result.error || 'Unknown error';
+        alert(`❌ Ingestion failed: ${errorMsg}`);
       }
     } catch (error) {
       alert(`❌ Failed: ${error}`);
@@ -118,7 +121,7 @@ export default function ApiSourcesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-8">
+    <DashboardLayout>
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 p-8 shadow-2xl">
@@ -278,6 +281,6 @@ export default function ApiSourcesPage() {
         onClose={() => setShowCreateModal(false)}
         onSuccess={fetchSources}
       />
-    </div>
+    </DashboardLayout>
   );
 }
