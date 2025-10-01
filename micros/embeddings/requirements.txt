@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn[standard]==0.31.0
+sentence-transformers==3.1.1
+torch>=2.0.0
+numpy>=1.26.0
+pydantic==2.9.2
+
+# Optional: for GPU support
+# Install CUDA-enabled PyTorch:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118

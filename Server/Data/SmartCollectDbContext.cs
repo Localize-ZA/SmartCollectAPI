@@ -12,6 +12,7 @@ public class SmartCollectDbContext : DbContext
 
     public DbSet<StagingDocument> StagingDocuments { get; set; } = null!;
     public DbSet<Document> Documents { get; set; } = null!;
+    public DbSet<DocumentChunk> DocumentChunks { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +58,34 @@ public class SmartCollectDbContext : DbContext
             // Unique constraint on sha256
             entity.HasIndex(e => e.Sha256).IsUnique().HasDatabaseName("idx_documents_sha256");
             entity.HasIndex(e => e.CreatedAt).HasDatabaseName("idx_documents_created_at");
+        });
+
+        // Configure document_chunks table
+        modelBuilder.Entity<DocumentChunk>(entity =>
+        {
+            entity.ToTable("document_chunks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").ValueGeneratedOnAdd();
+            entity.Property(e => e.DocumentId).HasColumnName("document_id").IsRequired();
+            entity.Property(e => e.ChunkIndex).HasColumnName("chunk_index").IsRequired();
+            entity.Property(e => e.Content).HasColumnName("content").IsRequired();
+            entity.Property(e => e.StartOffset).HasColumnName("start_offset").IsRequired();
+            entity.Property(e => e.EndOffset).HasColumnName("end_offset").IsRequired();
+            entity.Property(e => e.Embedding).HasColumnName("embedding");
+            entity.Property(e => e.Metadata).HasColumnName("metadata").HasColumnType("jsonb").HasDefaultValue("{}");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("NOW()");
+
+            // Foreign key
+            entity.HasOne(e => e.Document)
+                .WithMany()
+                .HasForeignKey(e => e.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Indexes
+            entity.HasIndex(e => new { e.DocumentId, e.ChunkIndex })
+                .IsUnique()
+                .HasDatabaseName("unique_document_chunk");
+            entity.HasIndex(e => e.DocumentId).HasDatabaseName("idx_document_chunks_document_id");
         });
 
         // Configure pgvector

@@ -1,7 +1,7 @@
 -- Create document_chunks table for semantic search over chunks
 CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
-    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
     start_offset INTEGER NOT NULL,

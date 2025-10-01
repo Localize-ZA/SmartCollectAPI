@@ -1,0 +1,11 @@
+fastapi==0.115.0
+uvicorn[standard]==0.31.0
+easyocr==1.7.1
+pillow==10.4.0
+python-multipart==0.0.9
+pydantic==2.9.2
+numpy==1.26.4
+
+# Optional: for GPU support
+# torch==2.1.0
+# torchvision==0.16.0

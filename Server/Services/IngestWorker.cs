@@ -158,6 +158,34 @@ public class IngestWorker : BackgroundService
                             }
 
                             dbContext.Documents.Add(document);
+                            await dbContext.SaveChangesAsync(stoppingToken); // Save to get the document ID
+
+                            // Save chunks if available
+                            if (pipelineResult.ChunkEmbeddings != null && pipelineResult.ChunkEmbeddings.Any())
+                            {
+                                _logger.LogInformation("Saving {Count} chunks for document {DocumentId}", 
+                                    pipelineResult.ChunkEmbeddings.Count, document.Id);
+                                
+                                foreach (var chunkEmb in pipelineResult.ChunkEmbeddings)
+                                {
+                                    var chunk = new DocumentChunk
+                                    {
+                                        DocumentId = document.Id,
+                                        ChunkIndex = chunkEmb.ChunkIndex,
+                                        Content = chunkEmb.Content,
+                                        StartOffset = chunkEmb.StartOffset,
+                                        EndOffset = chunkEmb.EndOffset,
+                                        Embedding = chunkEmb.Embedding,
+                                        Metadata = JsonSerializer.Serialize(chunkEmb.Metadata),
+                                        CreatedAt = DateTime.UtcNow
+                                    };
+                                    
+                                    dbContext.DocumentChunks.Add(chunk);
+                                }
+                                
+                                await dbContext.SaveChangesAsync(stoppingToken);
+                                _logger.LogInformation("Successfully saved {Count} chunks", pipelineResult.ChunkEmbeddings.Count);
+                            }
 
                             // Update staging document
                             stagingDoc.Normalized = JsonSerializer.SerializeToNode(pipelineResult.CanonicalDocument);

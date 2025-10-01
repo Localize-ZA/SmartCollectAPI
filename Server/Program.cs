@@ -142,20 +142,24 @@ namespace SmartCollectAPI
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IJsonParser, SmartCollectAPI.Services.JsonParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.IXmlParser, SmartCollectAPI.Services.XmlParser>();
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ICsvParser, SmartCollectAPI.Services.CsvParser>();
-                // Register OSS providers (default for all other services)
+                builder.Services.AddSingleton<SmartCollectAPI.Services.ITextChunkingService, SmartCollectAPI.Services.TextChunkingService>();
+                
+                // Register OSS conversion and document parsing services
                 builder.Services.AddSingleton<ILibreOfficeConversionService, LibreOfficeConversionService>();
                 builder.Services.AddScoped<OssDocumentParser>();
-                builder.Services.AddScoped<SimplePdfParser>();
-                builder.Services.AddScoped<PdfPigParser>(); // Advanced PDF parser
-                builder.Services.AddScoped<SimpleEmbeddingService>();
+                builder.Services.AddScoped<PdfPigParser>(); // Advanced PDF parser (iText7 engine)
                 builder.Services.AddScoped<SmtpNotificationService>();
-                builder.Services.AddScoped<TesseractOcrService>();
-                builder.Services.AddScoped<SimpleOcrService>();
-                builder.Services.AddScoped<SimpleEntityExtractionService>();
                 
-                // Register spaCy NLP service (replaces Simple embedding and entity services)
-                builder.Services.AddHttpClient<SpacyNlpService>();
+                // Register OCR services
+                builder.Services.AddScoped<TesseractOcrService>(); // Fallback OCR
+                builder.Services.AddHttpClient<EasyOcrService>(); // Primary OCR - Deep learning
+                builder.Services.AddScoped<EasyOcrService>();
+                
+                // Register NLP and embedding services  
+                builder.Services.AddHttpClient<SpacyNlpService>(); // Entity extraction + 300-dim embeddings
                 builder.Services.AddScoped<SpacyNlpService>();
+                builder.Services.AddHttpClient<SentenceTransformerService>(); // High-quality 768-dim embeddings
+                builder.Services.AddScoped<SentenceTransformerService>();
 
                 // Register provider factory
                 builder.Services.AddScoped<IProviderFactory, ProviderFactory>();

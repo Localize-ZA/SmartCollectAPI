@@ -13,7 +13,7 @@ public class DocumentChunk
 
     [Column("document_id")]
     [Required]
-    public int DocumentId { get; set; }
+    public Guid DocumentId { get; set; }
 
     [Column("chunk_index")]
     [Required]

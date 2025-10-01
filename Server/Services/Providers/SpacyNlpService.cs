@@ -15,7 +15,7 @@ public class SpacyNlpService : IEntityExtractionService, IEmbeddingService
     private readonly ILogger<SpacyNlpService> _logger;
     private const string SPACY_BASE_URL = "http://localhost:5084";
 
-    public int EmbeddingDimensions => 96; // spaCy en_core_web_sm dimensions
+    public int EmbeddingDimensions => 300; // spaCy en_core_web_md dimensions (upgraded from 96)
     public int MaxTokens => 8192;
 
     public SpacyNlpService(HttpClient httpClient, ILogger<SpacyNlpService> logger)

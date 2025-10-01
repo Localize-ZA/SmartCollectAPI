@@ -32,7 +32,7 @@ public class ProviderFactory : IProviderFactory
         return _options.Parser?.ToUpperInvariant() switch
         {
             "OSS" => _serviceProvider.GetRequiredService<OssDocumentParser>(), // Composite parser with LibreOffice + PdfPig
-            "SIMPLE" => _serviceProvider.GetRequiredService<SimplePdfParser>(), // Lightweight baseline parser
+            "PDFPIG" => _serviceProvider.GetRequiredService<PdfPigParser>(), // Direct PdfPig parser
             _ => _serviceProvider.GetRequiredService<OssDocumentParser>() // Default to OSS composite parser
         };
     }
@@ -41,8 +41,9 @@ public class ProviderFactory : IProviderFactory
     {
         return _options.OCR?.ToUpperInvariant() switch
         {
-            "SIMPLE" => _serviceProvider.GetRequiredService<SimpleOcrService>(),
-            _ => _serviceProvider.GetRequiredService<TesseractOcrService>()
+            "EASYOCR" => _serviceProvider.GetRequiredService<EasyOcrService>(), // New advanced OCR
+            "TESSERACT" => _serviceProvider.GetRequiredService<TesseractOcrService>(), // Fallback OCR
+            _ => _serviceProvider.GetRequiredService<EasyOcrService>() // Default to EasyOCR when available
         };
     }
 

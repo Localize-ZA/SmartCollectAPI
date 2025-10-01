@@ -3,6 +3,7 @@ using SmartCollectAPI.Models;
 using SmartCollectAPI.Services.Providers;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Pgvector;
 
 namespace SmartCollectAPI.Services;
 
@@ -20,6 +21,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
     private readonly IJsonParser _jsonParser;
     private readonly IXmlParser _xmlParser;
     private readonly ICsvParser _csvParser;
+    private readonly ITextChunkingService _chunkingService;
 
     public DocumentProcessingPipeline(
         ILogger<DocumentProcessingPipeline> logger,
@@ -28,7 +30,8 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         IContentDetector contentDetector,
         IJsonParser jsonParser,
         IXmlParser xmlParser,
-        ICsvParser csvParser)
+        ICsvParser csvParser,
+        ITextChunkingService chunkingService)
     {
         _logger = logger;
         _providerFactory = providerFactory;
@@ -37,6 +40,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
         _jsonParser = jsonParser;
         _xmlParser = xmlParser;
         _csvParser = csvParser;
+        _chunkingService = chunkingService;
     }
 
     public async Task<PipelineResult> ProcessDocumentAsync(JobEnvelope job, CancellationToken cancellationToken = default)
@@ -78,15 +82,73 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 entityResult = await entityService.ExtractEntitiesAsync(parseResult.ExtractedText, cancellationToken);
             }
 
-            // Step 5: Generate embeddings
-            var embeddingService = _providerFactory.GetEmbeddingService();
-            var textToEmbed = PrepareTextForEmbedding(parseResult.ExtractedText, parseResult.Metadata);
-            var embeddingResult = await embeddingService.GenerateEmbeddingAsync(textToEmbed, cancellationToken);
+            // Step 5: Chunk text for better semantic search
+            List<TextChunk>? chunks = null;
+            if (!string.IsNullOrWhiteSpace(parseResult.ExtractedText) && parseResult.ExtractedText.Length > 2000)
+            {
+                _logger.LogInformation("Chunking text ({Length} chars) for better semantic search", parseResult.ExtractedText.Length);
+                
+                var chunkingOptions = new ChunkingOptions(
+                    MaxTokens: 512,      // ~2048 characters per chunk
+                    OverlapTokens: 100,   // ~400 character overlap
+                    Strategy: ChunkingStrategy.SlidingWindow
+                );
+                
+                chunks = _chunkingService.ChunkText(parseResult.ExtractedText, chunkingOptions);
+                _logger.LogInformation("Created {ChunkCount} chunks from document", chunks.Count);
+            }
 
-            // Step 6: Create canonical document
+            // Step 6: Generate embeddings for chunks or full document
+            var embeddingService = _providerFactory.GetEmbeddingService();
+            EmbeddingResult embeddingResult;
+            List<ChunkEmbedding>? chunkEmbeddings = null;
+            
+            if (chunks != null && chunks.Any())
+            {
+                // Generate embeddings for each chunk
+                chunkEmbeddings = new List<ChunkEmbedding>();
+                
+                foreach (var chunk in chunks)
+                {
+                    var chunkEmbedding = await embeddingService.GenerateEmbeddingAsync(chunk.Content, cancellationToken);
+                    
+                    if (chunkEmbedding.Success)
+                    {
+                        chunkEmbeddings.Add(new ChunkEmbedding(
+                            ChunkIndex: chunk.ChunkIndex,
+                            Content: chunk.Content,
+                            StartOffset: chunk.StartOffset,
+                            EndOffset: chunk.EndOffset,
+                            Embedding: chunkEmbedding.Embedding,
+                            Metadata: chunk.Metadata
+                        ));
+                    }
+                }
+                
+                _logger.LogInformation("Generated embeddings for {Count} chunks", chunkEmbeddings.Count);
+                
+                // Use first chunk's embedding as document-level embedding (or compute average)
+                if (chunkEmbeddings.Count > 0 && chunkEmbeddings[0].Embedding != null)
+                {
+                    embeddingResult = new EmbeddingResult(chunkEmbeddings[0].Embedding!);
+                }
+                else
+                {
+                    var emptyVector = new Vector(new float[embeddingService.EmbeddingDimensions]);
+                    embeddingResult = new EmbeddingResult(emptyVector, false, "No chunk embeddings generated");
+                }
+            }
+            else
+            {
+                // Generate single embedding for the whole document
+                var textToEmbed = PrepareTextForEmbedding(parseResult.ExtractedText, parseResult.Metadata);
+                embeddingResult = await embeddingService.GenerateEmbeddingAsync(textToEmbed, cancellationToken);
+            }
+
+            // Step 7: Create canonical document
             var canonicalDoc = CreateCanonicalDocument(job, parseResult, entityResult, embeddingResult);
 
-            // Step 7: Send notification if requested
+            // Step 8: Send notification if requested
             NotificationResult? notificationResult = null;
             if (!string.IsNullOrWhiteSpace(job.NotifyEmail))
             {
@@ -98,6 +160,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
             return new PipelineResult(
                 Success: true,
                 CanonicalDocument: canonicalDoc,
+                ChunkEmbeddings: chunkEmbeddings,
                 NotificationResult: notificationResult
             );
         }
@@ -194,7 +257,7 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
                 Metadata: new Dictionary<string, object>
                 {
                     ["parser"] = "Structured",
-                    ["structured_data"] = structuredData,
+                    ["structured_data"] = structuredData ?? new JsonObject(),
                     ["is_structured"] = true
                 }
             );
@@ -413,6 +476,16 @@ public class DocumentProcessingPipeline : IDocumentProcessingPipeline
 public record PipelineResult(
     bool Success,
     CanonicalDocument? CanonicalDocument,
+    List<ChunkEmbedding>? ChunkEmbeddings = null,
     NotificationResult? NotificationResult = null,
     string? ErrorMessage = null
+);
+
+public record ChunkEmbedding(
+    int ChunkIndex,
+    string Content,
+    int StartOffset,
+    int EndOffset,
+    Vector? Embedding,
+    Dictionary<string, object> Metadata
 );
