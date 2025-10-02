@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { X, Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
+import { API_BASE } from "@/lib/api";
 
 interface CreateApiSourceModalProps {
   isOpen: boolean;
@@ -47,29 +48,53 @@ export function CreateApiSourceModal({
     setError("");
 
     try {
-      // Prepare payload
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         ...formData,
-        authConfig: Object.keys(authConfig).length > 0 ? authConfig : undefined,
       };
+
+      const authConfigPayload = { ...authConfig };
+      let authConfigForPayload: Record<string, string> | undefined;
+
+      if (formData.authType === "ApiKey") {
+        payload.authLocation = authConfigPayload.in ?? "header";
+        payload.headerName = authConfigPayload.header ?? "X-API-Key";
+        payload.queryParam = authConfigPayload.param ?? "api_key";
+
+        const { key: extractedKey, ...rest } = authConfigPayload;
+        if (extractedKey) {
+          payload.apiKey = extractedKey;
+        }
+        authConfigForPayload = rest;
+      } else if (Object.keys(authConfigPayload).length > 0) {
+        authConfigForPayload = authConfigPayload;
+      }
+
+      if (authConfigForPayload && Object.keys(authConfigForPayload).length > 0) {
+        payload.authConfig = authConfigForPayload;
+      }
 
       // Clear sensitive key from state immediately after preparing payload
       if (authConfig.key) {
-        setAuthConfig((prev) => ({ ...prev, key: "" }));
+        setAuthConfig((prev) => {
+          const next = { ...prev };
+          delete next.key;
+          return next;
+        });
       }
 
-      // Remove empty strings
       Object.keys(payload).forEach((key) => {
-        if (payload[key] === "") {
+        const value = payload[key];
+        if (typeof value === "string" && value.trim() === "") {
           delete payload[key];
         }
       });
 
-      const response = await fetch("http://localhost:5082/api/sources", {
+      const response = await fetch(`${API_BASE}/api/sources`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        signal: AbortSignal.timeout(10000),
         body: JSON.stringify(payload),
       });
 
@@ -82,8 +107,8 @@ export function CreateApiSourceModal({
       onSuccess();
       onClose();
       resetForm();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }

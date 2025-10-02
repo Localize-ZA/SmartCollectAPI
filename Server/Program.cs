@@ -161,6 +161,10 @@ namespace SmartCollectAPI
                 builder.Services.AddHttpClient<SentenceTransformerService>(); // High-quality 768-dim embeddings
                 builder.Services.AddScoped<SentenceTransformerService>();
 
+                // Register Language Detection service (Phase 4)
+                builder.Services.AddHttpClient("LanguageDetection");
+                builder.Services.AddScoped<SmartCollectAPI.Services.ILanguageDetectionService, SmartCollectAPI.Services.LanguageDetectionService>();
+
                 // Register provider factories (Phase 2)
                 builder.Services.AddScoped<IProviderFactory, ProviderFactory>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.Providers.IEmbeddingProviderFactory, SmartCollectAPI.Services.Providers.EmbeddingProviderFactory>();

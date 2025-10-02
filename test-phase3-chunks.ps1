@@ -179,7 +179,7 @@ Write-Host "5. Comparing Embedding Providers..." -ForegroundColor Yellow
 try {
     $query = "machine learning algorithms"
     
-    Write-Host "  Testing with spaCy (300-dim)..." -ForegroundColor Gray
+    Write-Host "  Testing with spaCy 300 dimensions..." -ForegroundColor Gray
     $spacyRequest = @{
         query = $query
         provider = "spacy"
@@ -192,7 +192,7 @@ try {
         -Body $spacyRequest `
         -ContentType "application/json"
 
-    Write-Host "  Testing with sentence-transformers (768-dim)..." -ForegroundColor Gray
+    Write-Host "  Testing with sentence-transformers 768 dimensions..." -ForegroundColor Gray
     $stRequest = @{
         query = $query
         provider = "sentence-transformers"
@@ -217,9 +217,9 @@ try {
         Write-Host "    ST Avg Similarity: $([math]::Round($stAvgSim, 3))" -ForegroundColor Gray
         
         if ($stAvgSim -gt $spacyAvgSim) {
-            Write-Host "    → Sentence Transformers (768-dim) shows higher quality" -ForegroundColor Green
+            Write-Host "    -> Sentence Transformers 768D shows higher quality" -ForegroundColor Green
         } else {
-            Write-Host "    → spaCy (300-dim) is faster but may have lower quality" -ForegroundColor Yellow
+            Write-Host "    -> spaCy 300D is faster but may have lower quality" -ForegroundColor Yellow
         }
     }
 

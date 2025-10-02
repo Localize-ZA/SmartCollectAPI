@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Plus, RefreshCw, Trash2, Edit, Play, TestTube } from "lucide-react";
 import { CreateApiSourceModal } from "@/components/CreateApiSourceModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { API_BASE } from "@/lib/api";
 
 interface ApiSource {
   id: string;
@@ -29,20 +30,44 @@ interface ApiSource {
 export default function ApiSourcesPage() {
   const [sources, setSources] = useState<ApiSource[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
-    fetchSources();
+    void fetchSources();
   }, []);
 
   const fetchSources = async () => {
+    setLoading(true);
+    setErrorMessage(null);
+
     try {
-      setLoading(true);
-      const response = await fetch("http://localhost:5082/api/sources");
-      const data = await response.json();
-      setSources(data);
+      const response = await fetch(`${API_BASE}/api/sources`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `Request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json().catch(() => {
+        throw new Error("Invalid JSON received from the API.");
+      });
+
+      if (Array.isArray(payload)) {
+        setSources(payload);
+      } else if (Array.isArray(payload?.items)) {
+        setSources(payload.items as ApiSource[]);
+      } else {
+        setSources([]);
+        setErrorMessage("Unexpected response format received from the API.");
+      }
     } catch (error) {
-      console.error("Failed to fetch sources:", error);
+      console.error("Failed to fetch API sources", error);
+      setSources([]);
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load API sources.");
     } finally {
       setLoading(false);
     }
@@ -50,67 +75,93 @@ export default function ApiSourcesPage() {
 
   const testConnection = async (id: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5082/api/sources/${id}/test-connection`,
-        { method: "POST" }
-      );
-      const result = await response.json();
-      alert(result.success ? "✅ Connection successful!" : `❌ ${result.message}`);
+      const response = await fetch(`${API_BASE}/api/sources/${id}/test-connection`, {
+        method: "POST",
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const result = await response.json().catch(() => ({ success: false, message: "Unable to parse response." }));
+
+      if (!response.ok) {
+        throw new Error(result?.message || `Test failed with status ${response.status}`);
+      }
+
+      window.alert(result.success ? "Connection successful." : result.message ?? "Connection failed.");
     } catch (error) {
-      alert(`❌ Test failed: ${error}`);
+      window.alert(`Test failed: ${error instanceof Error ? error.message : error}`);
     }
   };
 
   const triggerIngestion = async (id: string) => {
     try {
-      const response = await fetch(
-        `http://localhost:5082/api/sources/${id}/trigger`,
-        { method: "POST" }
-      );
-      const result = await response.json();
-      
+      const response = await fetch(`${API_BASE}/api/sources/${id}/trigger`, {
+        method: "POST",
+        signal: AbortSignal.timeout(15000),
+      });
+
+      const result = await response.json().catch(() => ({ success: false, error: "Unable to parse response." }));
+
+      if (!response.ok) {
+        throw new Error(result?.error || `Trigger failed with status ${response.status}`);
+      }
+
       if (result.success) {
-        alert(
-          `✅ Ingestion successful!\n\n` +
-          `Records: ${result.recordsFetched}\n` +
-          `Created: ${result.documentsCreated}\n` +
-          `Failed: ${result.documentsFailed}\n` +
-          `Time: ${result.executionTimeMs}ms`
+        window.alert(
+          `Ingestion successful.\n\n` +
+            `Records: ${result.recordsFetched}\n` +
+            `Created: ${result.documentsCreated}\n` +
+            `Failed: ${result.documentsFailed}\n` +
+            `Time: ${result.executionTimeMs}ms`
         );
-        fetchSources(); // Refresh list
+        void fetchSources();
       } else {
-        // Handle both errorMessage (from normal flow) and error (from exception)
-        const errorMsg = result.errorMessage || result.error || 'Unknown error';
-        alert(`❌ Ingestion failed: ${errorMsg}`);
+        const errorMsg = result.errorMessage || result.error || "Unknown error";
+        window.alert(`Ingestion failed: ${errorMsg}`);
       }
     } catch (error) {
-      alert(`❌ Failed: ${error}`);
+      window.alert(`Failed to trigger ingestion: ${error instanceof Error ? error.message : error}`);
     }
   };
 
   const toggleEnabled = async (source: ApiSource) => {
     try {
-      await fetch(`http://localhost:5082/api/sources/${source.id}`, {
+      const response = await fetch(`${API_BASE}/api/sources/${source.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: !source.enabled }),
+        signal: AbortSignal.timeout(10000),
       });
-      fetchSources();
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `Toggle failed with status ${response.status}`);
+      }
+
+      void fetchSources();
     } catch (error) {
-      console.error("Failed to toggle source:", error);
+      console.error("Failed to toggle source", error);
+      window.alert(`Failed to update source: ${error instanceof Error ? error.message : error}`);
     }
   };
 
   const deleteSource = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"?`)) return;
-    
+    if (!window.confirm(`Delete "${name}"?`)) return;
+
     try {
-      await fetch(`http://localhost:5082/api/sources/${id}`, {
+      const response = await fetch(`${API_BASE}/api/sources/${id}`, {
         method: "DELETE",
+        signal: AbortSignal.timeout(10000),
       });
-      fetchSources();
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || `Delete failed with status ${response.status}`);
+      }
+
+      void fetchSources();
     } catch (error) {
-      console.error("Failed to delete source:", error);
+      console.error("Failed to delete source", error);
+      window.alert(`Failed to delete source: ${error instanceof Error ? error.message : error}`);
     }
   };
 
@@ -125,26 +176,29 @@ export default function ApiSourcesPage() {
     }
   };
 
+  const isEmpty = !loading && sources.length === 0;
+
   return (
     <DashboardLayout>
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8">
         <div className="backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 p-8 shadow-2xl">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent mb-2">
                 API Sources
               </h1>
-              <p className="text-gray-400">
-                Manage external API connections for automated data ingestion
+              <p className="text-gray-400 max-w-2xl">
+                Manage external API connections, encrypted credentials, and ingestion diagnostics.
               </p>
             </div>
             <div className="flex gap-3">
               <button
-                onClick={fetchSources}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all duration-200 flex items-center gap-2"
+                onClick={() => void fetchSources()}
+                disabled={loading}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-white/5 border border-white/10 rounded-lg transition-all duration-200 flex items-center gap-2"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                 Refresh
               </button>
               <button
@@ -159,13 +213,18 @@ export default function ApiSourcesPage() {
         </div>
       </div>
 
-      {/* Sources List */}
       <div className="max-w-7xl mx-auto space-y-4">
+        {errorMessage && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-200 rounded-xl px-4 py-3">
+            {errorMessage}
+          </div>
+        )}
+
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading...</div>
-        ) : sources.length === 0 ? (
+          <div className="text-center py-12 text-gray-400">Loading sources�</div>
+        ) : isEmpty ? (
           <div className="backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 p-12 text-center">
-            <p className="text-gray-400 mb-4">No API sources configured</p>
+            <p className="text-gray-400 mb-4">No API sources configured yet.</p>
             <button
               onClick={() => setShowCreateModal(true)}
               className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg"
@@ -179,9 +238,9 @@ export default function ApiSourcesPage() {
               key={source.id}
               className="backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 p-6 hover:bg-white/10 transition-all duration-200 shadow-xl"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-start justify-between gap-6 flex-wrap">
+                <div className="flex-1 min-w-[240px]">
+                  <div className="flex items-center gap-3 mb-2 flex-wrap">
                     <h3 className="text-xl font-semibold text-white">
                       {source.name}
                     </h3>
@@ -193,7 +252,7 @@ export default function ApiSourcesPage() {
                     </span>
                     {source.authType && source.authType !== "None" && (
                       <span className="px-2 py-1 bg-amber-500/20 text-amber-300 text-xs rounded-md border border-amber-500/30">
-                        🔐 {source.authType}
+                        {source.authType}
                       </span>
                     )}
                     {source.hasApiKey && (
@@ -205,7 +264,7 @@ export default function ApiSourcesPage() {
                       <input
                         type="checkbox"
                         checked={source.enabled}
-                        onChange={() => toggleEnabled(source)}
+                        onChange={() => void toggleEnabled(source)}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
@@ -218,23 +277,21 @@ export default function ApiSourcesPage() {
                     </p>
                   )}
 
-                  <div className="text-sm text-gray-500 font-mono mb-3">
+                  <div className="text-sm text-gray-500 font-mono mb-3 break-all">
                     {source.endpointUrl}
                   </div>
 
-                  <div className="flex items-center gap-6 text-sm">
+                  <div className="flex items-center gap-6 text-sm flex-wrap text-gray-300">
                     {source.lastRunAt && (
                       <div>
                         <span className="text-gray-500">Last Run: </span>
-                        <span className="text-gray-300">
-                          {new Date(source.lastRunAt).toLocaleString()}
-                        </span>
+                        {new Date(source.lastRunAt).toLocaleString()}
                       </div>
                     )}
                     {source.lastUsedAt && (
                       <div>
                         <span className="text-gray-500">Key Used: </span>
-                        <span className="text-gray-300">{new Date(source.lastUsedAt).toLocaleString()}</span>
+                        {new Date(source.lastUsedAt).toLocaleString()}
                       </div>
                     )}
                     {source.lastStatus && (
@@ -246,18 +303,20 @@ export default function ApiSourcesPage() {
                       </div>
                     )}
                     {source.consecutiveFailures > 0 && (
-                      <div>
-                        <span className="text-red-400">
-                          ⚠️ {source.consecutiveFailures} consecutive failures
-                        </span>
+                      <div className="text-red-400">
+                        {source.consecutiveFailures} consecutive failures
                       </div>
                     )}
                     {source.authType === "ApiKey" && (
-                      <div className="text-gray-400">
+                      <div>
                         Auth: {source.authLocation === "query" ? (
-                          <>Query param <span className="text-gray-300">{source.queryParam || "api_key"}</span></>
+                          <>
+                            Query param <span className="text-gray-100">{source.queryParam || "api_key"}</span>
+                          </>
                         ) : (
-                          <>Header <span className="text-gray-300">{source.headerName || "X-API-Key"}</span></>
+                          <>
+                            Header <span className="text-gray-100">{source.headerName || "X-API-Key"}</span>
+                          </>
                         )}
                       </div>
                     )}
@@ -266,28 +325,28 @@ export default function ApiSourcesPage() {
 
                 <div className="flex gap-2">
                   <button
-                    onClick={() => testConnection(source.id)}
+                    onClick={() => void testConnection(source.id)}
                     className="p-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg transition-all"
                     title="Test Connection"
                   >
                     <TestTube className="w-4 h-4 text-blue-300" />
                   </button>
                   <button
-                    onClick={() => triggerIngestion(source.id)}
+                    onClick={() => void triggerIngestion(source.id)}
                     className="p-2 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 rounded-lg transition-all"
                     title="Trigger Ingestion"
                   >
                     <Play className="w-4 h-4 text-green-300" />
                   </button>
                   <button
-                    onClick={() => alert("Edit modal coming soon!")}
+                    onClick={() => window.alert("Edit modal coming soon!")}
                     className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all"
                     title="Edit"
                   >
                     <Edit className="w-4 h-4 text-gray-300" />
                   </button>
                   <button
-                    onClick={() => deleteSource(source.id, source.name)}
+                    onClick={() => void deleteSource(source.id, source.name)}
                     className="p-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg transition-all"
                     title="Delete"
                   >
@@ -300,11 +359,10 @@ export default function ApiSourcesPage() {
         )}
       </div>
 
-      {/* Create Modal */}
       <CreateApiSourceModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onSuccess={fetchSources}
+        onSuccess={() => void fetchSources()}
       />
     </DashboardLayout>
   );
