@@ -1,13 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X, Eye, EyeOff, AlertCircle, Lock } from "lucide-react";
 import { API_BASE } from "@/lib/api";
+
+type CreateApiSourceFormState = {
+  name: string;
+  description: string;
+  apiType: string;
+  endpointUrl: string;
+  httpMethod: string;
+  authType: string;
+  customHeaders: string;
+  requestBody: string;
+  queryParams: string;
+  responsePath: string;
+  fieldMappings: string;
+  scheduleCron: string;
+  enabled: boolean;
+};
+
+const defaultFormState: CreateApiSourceFormState = {
+  name: "",
+  description: "",
+  apiType: "REST",
+  endpointUrl: "",
+  httpMethod: "GET",
+  authType: "None",
+  customHeaders: "",
+  requestBody: "",
+  queryParams: "",
+  responsePath: "$",
+  fieldMappings: "",
+  scheduleCron: "",
+  enabled: false,
+};
 
 interface CreateApiSourceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialValues?: Partial<CreateApiSourceFormState>;
+  warnings?: string[];
+  uncertainFields?: string[];
 }
 
 interface AuthConfig {
@@ -595,4 +630,5 @@ export function CreateApiSourceModal({
     </div>
   );
 }
+
 

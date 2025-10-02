@@ -192,6 +192,11 @@ export function DocumentsPanel() {
           <Badge variant={item.hasEmbedding ? "default" : "secondary"}>
             {item.hasEmbedding ? "Embedded" : "Pending"}
           </Badge>
+          {item.embeddingProvider && (
+            <div className="text-xs text-muted-foreground mt-1">
+              {item.embeddingProvider} ({item.embeddingDimensions}d)
+            </div>
+          )}
         </TableCell>
         <TableCell align="right">
           <Button
@@ -386,6 +391,12 @@ export function DocumentsPanel() {
                   <InfoRow label="SHA256" value={detail.sha256 ?? "—"} mono />
                   <InfoRow label="Created" value={new Date(detail.createdAt).toLocaleString()} />
                   <InfoRow label="Updated" value={new Date(detail.updatedAt).toLocaleString()} />
+                  {detail.embeddingProvider && (
+                    <InfoRow label="Embedding Provider" value={detail.embeddingProvider} />
+                  )}
+                  {detail.embeddingDimensions && (
+                    <InfoRow label="Embedding Dimensions" value={String(detail.embeddingDimensions)} />
+                  )}
                 </div>
                 <div className="space-y-2">
                   <div className="font-semibold">Canonical payload</div>
@@ -395,9 +406,9 @@ export function DocumentsPanel() {
                 </div>
                 {detail.embedding && Array.isArray(detail.embedding) && detail.embedding.length > 0 && (
                   <div className="space-y-2">
-                    <div className="font-semibold">Embedding preview</div>
+                    <div className="font-semibold">Embedding preview (Mean-of-Chunks)</div>
                     <div className="text-xs text-muted-foreground">
-                      Showing first 16 of {detail.embedding.length} dimensions
+                      Showing first 16 of {detail.embedding.length} dimensions • {detail.embeddingProvider || "Unknown provider"}
                     </div>
                     <div className="rounded-md bg-muted p-3 text-xs font-mono">
                       {detail.embedding.slice(0, 16).map((value, index) => (
@@ -405,6 +416,14 @@ export function DocumentsPanel() {
                           {value.toFixed(4)}
                         </span>
                       ))}
+                    </div>
+                    <div className="pt-2">
+                      <a
+                        href={`/search?documentId=${detail.id}`}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        View document chunks →
+                      </a>
                     </div>
                   </div>
                 )}

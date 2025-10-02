@@ -1,9 +1,11 @@
+using System.Net.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SmartCollectAPI.Data;
 using SmartCollectAPI.Models;
 using SmartCollectAPI.Services.ApiIngestion;
 using SmartCollectAPI.Services;
+using SmartCollectAPI.Services.ApiSources;
 
 namespace SmartCollectAPI.Controllers;
 
@@ -16,7 +18,8 @@ public class ApiSourcesController(
     IApiClient apiClient,
     IDataTransformer transformer,
     IApiIngestionService ingestionService,
-    ISecretCryptoService crypto) : ControllerBase
+    ISecretCryptoService crypto,
+    IApiSourceDocsAnalyzer docsAnalyzer) : ControllerBase
 {
     private readonly SmartCollectDbContext _context = context;
     private readonly ILogger<ApiSourcesController> _logger = logger;
@@ -25,6 +28,7 @@ public class ApiSourcesController(
     private readonly IDataTransformer _transformer = transformer;
     private readonly IApiIngestionService _ingestionService = ingestionService;
     private readonly ISecretCryptoService _crypto = crypto;
+    private readonly IApiSourceDocsAnalyzer _docsAnalyzer = docsAnalyzer;
 
     /// <summary>
     /// Get all API sources
@@ -95,6 +99,59 @@ public class ApiSourcesController(
         {
             _logger.LogError(ex, "Failed to retrieve API source {SourceId}", id);
             return StatusCode(500, new { error = "Failed to retrieve API source" });
+        }
+    }
+
+    /// <summary>
+    /// Analyze external documentation and propose API source defaults.
+    /// </summary>
+    [HttpPost("auto-fill")]
+    public async Task<ActionResult<ApiSourceAutoFillResponse>> AutoFill([FromBody] ApiSourceAutoFillRequest request, CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.DocsUrl))
+        {
+            return BadRequest(new { error = "docsUrl is required" });
+        }
+
+        try
+        {
+            var result = await _docsAnalyzer.AnalyzeAsync(request.DocsUrl, cancellationToken);
+
+            var suggestions = result.Suggestions
+                .Select(s => new ApiSourceAutoFillSuggestionDto
+                {
+                    Field = s.Field,
+                    Value = s.Value,
+                    Confidence = s.Confidence,
+                    Notes = s.Notes
+                })
+                .ToList();
+
+            return Ok(new ApiSourceAutoFillResponse
+            {
+                Suggestions = suggestions,
+                Warnings = result.Warnings.ToList(),
+                SampleSnippet = result.SampleSnippet
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Docs auto-fill failed for {DocsUrl}", request.DocsUrl);
+            return StatusCode(502, new { error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "HTTP error while fetching docs {DocsUrl}", request.DocsUrl);
+            return StatusCode(502, new { error = "Failed to fetch documentation." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected failure while analyzing docs {DocsUrl}", request.DocsUrl);
+            return StatusCode(500, new { error = "Failed to analyze documentation" });
         }
     }
 
@@ -484,6 +541,27 @@ public class ApiSourcesController(
 }
 
 // DTOs
+public class ApiSourceAutoFillRequest
+{
+    public string DocsUrl { get; set; } = string.Empty;
+    public string? Notes { get; set; }
+}
+
+public class ApiSourceAutoFillSuggestionDto
+{
+    public string Field { get; set; } = string.Empty;
+    public string? Value { get; set; }
+    public double Confidence { get; set; }
+    public string? Notes { get; set; }
+}
+
+public class ApiSourceAutoFillResponse
+{
+    public List<ApiSourceAutoFillSuggestionDto> Suggestions { get; set; } = new();
+    public List<string> Warnings { get; set; } = new();
+    public string? SampleSnippet { get; set; }
+}
+
 public class ApiSourceDto
 {
     public Guid Id { get; set; }

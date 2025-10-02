@@ -1,4 +1,4 @@
-"use client";
+ï»¿"use client";
 
 import { useEffect, useState } from "react";
 import { Plus, RefreshCw, Trash2, Edit, Play, TestTube } from "lucide-react";
@@ -221,7 +221,7 @@ export default function ApiSourcesPage() {
         )}
 
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading sources…</div>
+          <div className="text-center py-12 text-gray-400">Loading sources...</div>
         ) : isEmpty ? (
           <div className="backdrop-blur-xl bg-white/5 rounded-2xl border border-white/10 p-12 text-center">
             <p className="text-gray-400 mb-4">No API sources configured yet.</p>

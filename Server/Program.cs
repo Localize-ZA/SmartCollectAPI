@@ -6,6 +6,7 @@ using SmartCollectAPI.Services.Providers;
 using Npgsql;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using SmartCollectAPI.Services.ApiSources;
 
 namespace SmartCollectAPI
 {
@@ -177,6 +178,12 @@ namespace SmartCollectAPI
                 {
                     client.Timeout = TimeSpan.FromMinutes(5);
                 });
+                builder.Services.AddHttpClient("ApiDocsAnalyzer", client =>
+                {
+                    client.Timeout = TimeSpan.FromSeconds(15);
+                    client.DefaultRequestHeaders.Accept.ParseAdd("text/html,application/json;q=0.5");
+                });
+                builder.Services.AddScoped<IApiSourceDocsAnalyzer, ApiSourceDocsAnalyzer>();
                 builder.Services.AddDataProtection(); // For encrypting general auth credentials (legacy/general)
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ISecretCryptoService, SmartCollectAPI.Services.SecretCryptoService>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IAuthenticationManager, SmartCollectAPI.Services.ApiIngestion.AuthenticationManager>();
@@ -232,6 +239,30 @@ namespace SmartCollectAPI
                 {
                     var db = scope.ServiceProvider.GetRequiredService<SmartCollectDbContext>();
                     db.Database.EnsureCreated();
+
+                    try
+                    {
+                        // Add columns individually to avoid syntax errors
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS auth_location VARCHAR(20);");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS header_name VARCHAR(100);");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS query_param VARCHAR(100);");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS has_api_key BOOLEAN DEFAULT false;");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS key_version INTEGER;");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS api_key_ciphertext BYTEA;");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS api_key_iv BYTEA;");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS api_key_tag BYTEA;");
+                        db.Database.ExecuteSqlRaw("ALTER TABLE api_sources ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;");
+
+                        db.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS idx_api_sources_has_api_key ON api_sources(has_api_key);");
+                        db.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS idx_api_sources_endpoint_url ON api_sources(endpoint_url);");
+                        db.Database.ExecuteSqlRaw("CREATE UNIQUE INDEX IF NOT EXISTS ux_api_sources_name ON api_sources(name);");
+
+                        db.Database.ExecuteSqlRaw("UPDATE api_sources SET has_api_key = COALESCE(has_api_key, false) WHERE has_api_key IS NULL;");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to ensure api_sources schema is updated.");
+                    }
                 }
                 catch (Exception ex)
                 {

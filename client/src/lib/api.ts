@@ -148,6 +148,8 @@ export interface DocumentSummary {
   sha256?: string | null;
   createdAt: string;
   hasEmbedding: boolean;
+  embeddingProvider?: string | null;
+  embeddingDimensions?: number | null;
 }
 
 export interface PagedDocuments {
@@ -176,6 +178,8 @@ export interface DocumentDetail {
   createdAt: string;
   updatedAt: string;
   embedding?: number[] | null | Record<string, unknown>;
+  embeddingProvider?: string | null;
+  embeddingDimensions?: number | null;
 }
 
 export async function getDocument(id: string): Promise<DocumentDetail> {
@@ -275,7 +279,10 @@ export async function getAllMicroservicesHealth(): Promise<MicroserviceStatus[]>
   const microservices = [
     { name: 'Main API', url: API_BASE },
     { name: 'SMTP Service', url: 'http://localhost:5083' },
-    { name: 'spaCy NLP Service', url: 'http://localhost:5084' }
+    { name: 'spaCy NLP Service', url: 'http://localhost:5084' },
+    { name: 'Embeddings Service', url: 'http://localhost:8001' },
+    { name: 'OCR Service', url: 'http://localhost:8002' },
+    { name: 'Language Detection', url: 'http://localhost:8004' }
   ];
 
   const healthChecks = microservices.map(service => 
@@ -284,3 +291,372 @@ export async function getAllMicroservicesHealth(): Promise<MicroserviceStatus[]>
 
   return Promise.all(healthChecks);
 }
+
+// ===========================
+// Chunk Search (Phase 3)
+// ===========================
+
+export interface ChunkSearchResult {
+  chunkId: number;
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  similarity: number;
+  documentUri: string;
+}
+
+export interface ChunkSearchRequest {
+  query: string;
+  provider?: string;
+  limit?: number;
+  similarityThreshold?: number;
+}
+
+export interface ChunkSearchResponse {
+  query: string;
+  provider: string;
+  resultCount: number;
+  results: ChunkSearchResult[];
+}
+
+export async function searchChunks(request: ChunkSearchRequest): Promise<ChunkSearchResponse> {
+  const res = await fetch(`${API_BASE}/api/ChunkSearch/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: request.query,
+      provider: request.provider || "sentence-transformers",
+      limit: request.limit || 10,
+      similarityThreshold: request.similarityThreshold || 0.7
+    }),
+    cache: "no-store"
+  });
+  
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Search failed" }));
+    throw new Error(error.error || `Chunk search failed: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export interface DocumentChunk {
+  id: number;
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  startPosition: number;
+  endPosition: number;
+  tokenCount: number;
+  createdAt: string;
+}
+
+export async function getDocumentChunks(documentId: string): Promise<DocumentChunk[]> {
+  const res = await fetch(`${API_BASE}/api/ChunkSearch/document/${documentId}`, {
+    cache: "no-store"
+  });
+  
+  if (res.status === 404) {
+    throw new Error("Document not found or has no chunks");
+  }
+  
+  if (!res.ok) {
+    throw new Error(`Failed to get chunks: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export interface HybridSearchRequest {
+  query: string;
+  provider?: string;
+  limit?: number;
+  similarityThreshold?: number;
+  semanticWeight?: number;
+  textWeight?: number;
+}
+
+export interface HybridSearchResponse {
+  query: string;
+  provider: string;
+  resultCount: number;
+  results: ChunkSearchResult[];
+}
+
+export async function hybridSearchChunks(request: HybridSearchRequest): Promise<HybridSearchResponse> {
+  const res = await fetch(`${API_BASE}/api/ChunkSearch/hybrid-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: request.query,
+      provider: request.provider || "sentence-transformers",
+      limit: request.limit || 10,
+      similarityThreshold: request.similarityThreshold || 0.7,
+      semanticWeight: request.semanticWeight || 0.7,
+      textWeight: request.textWeight || 0.3
+    }),
+    cache: "no-store"
+  });
+  
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Hybrid search failed" }));
+    throw new Error(error.error || `Hybrid search failed: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+// ===========================
+// Language Detection (Phase 4)
+// ===========================
+
+export interface LanguageCandidate {
+  language: string;
+  languageName: string;
+  confidence: number;
+  isoCode639_1?: string;
+  isoCode639_3?: string;
+}
+
+export interface LanguageDetectionResult {
+  detectedLanguage: LanguageCandidate;
+  allCandidates: LanguageCandidate[];
+  textLength: number;
+}
+
+export async function detectLanguage(text: string, minConfidence = 0.0): Promise<LanguageDetectionResult> {
+  const res = await fetch("http://localhost:8004/detect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, min_confidence: minConfidence }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(10000)
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Language detection failed: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export interface SupportedLanguage {
+  code: string;
+  name: string;
+  isoCode639_1?: string;
+  isoCode639_3?: string;
+}
+
+export async function getSupportedLanguages(): Promise<SupportedLanguage[]> {
+  const res = await fetch("http://localhost:8004/languages", {
+    cache: "no-store",
+    signal: AbortSignal.timeout(5000)
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to get languages: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+// ===========================
+// API Sources Management
+// ===========================
+
+export interface ApiSource {
+  id: string;
+  name: string;
+  description?: string;
+  apiType: string;
+  endpointUrl: string;
+  httpMethod: string;
+  authType?: string;
+  authLocation?: string;
+  headerName?: string;
+  queryParam?: string;
+  hasApiKey?: boolean;
+  customHeaders?: string;
+  requestBody?: string;
+  queryParams?: string;
+  responsePath?: string;
+  fieldMappings?: string;
+  paginationType?: string;
+  paginationConfig?: string;
+  scheduleCron?: string;
+  enabled: boolean;
+  lastRunAt?: string;
+  lastUsedAt?: string;
+  lastStatus?: string;
+  consecutiveFailures: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateApiSourceDto {
+  name: string;
+  description?: string;
+  apiType?: string;
+  endpointUrl: string;
+  httpMethod?: string;
+  authType?: string;
+  authConfig?: Record<string, string>;
+  authLocation?: string;
+  headerName?: string;
+  queryParam?: string;
+  apiKey?: string;
+  customHeaders?: string;
+  requestBody?: string;
+  queryParams?: string;
+  responsePath?: string;
+  fieldMappings?: string;
+  paginationType?: string;
+  paginationConfig?: string;
+  scheduleCron?: string;
+  enabled?: boolean;
+}
+
+export interface ApiIngestionLog {
+  id: string;
+  sourceId: string;
+  startedAt: string;
+  completedAt?: string;
+  status?: string;
+  recordsFetched: number;
+  documentsCreated: number;
+  documentsFailed: number;
+  errorsCount: number;
+  errorMessage?: string;
+  httpStatusCode?: number;
+  responseSizeBytes?: number;
+  executionTimeMs?: number;
+  pagesProcessed?: number;
+  totalPages?: number;
+}
+
+export async function getApiSources(filters?: {
+  apiType?: string;
+  enabled?: boolean;
+  page?: number;
+  pageSize?: number;
+}): Promise<ApiSource[]> {
+  const url = new URL(`${API_BASE}/api/sources`);
+  if (filters?.apiType) url.searchParams.set("apiType", filters.apiType);
+  if (filters?.enabled !== undefined) url.searchParams.set("enabled", String(filters.enabled));
+  if (filters?.page) url.searchParams.set("page", String(filters.page));
+  if (filters?.pageSize) url.searchParams.set("pageSize", String(filters.pageSize));
+  
+  const res = await fetch(url, { cache: "no-store" });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to get API sources: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export async function getApiSource(id: string): Promise<ApiSource> {
+  const res = await fetch(`${API_BASE}/api/sources/${id}`, { cache: "no-store" });
+  
+  if (res.status === 404) {
+    throw new Error("API source not found");
+  }
+  
+  if (!res.ok) {
+    throw new Error(`Failed to get API source: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+\nexport interface ApiSourceAutoFillSuggestion {\n  field: string;\n  value?: string;\n  confidence: number;\n  notes?: string;\n}\n\nexport interface ApiSourceAutoFillResult {\n  suggestions: ApiSourceAutoFillSuggestion[];\n  warnings: string[];\n  sampleSnippet?: string;\n}\n\nexport async function autoFillApiSource(docsUrl: string, notes?: string): Promise<ApiSourceAutoFillResult> {\n  const payload: Record<string, unknown> = { docsUrl };\n  if (notes) payload.notes = notes;\n\n  const res = await fetch(`${API_BASE}/api/sources/auto-fill`, {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    signal: AbortSignal.timeout(15000),\n    body: JSON.stringify(payload),\n  });\n\n  const result = await res.json().catch(() => ({ suggestions: [], warnings: [] }));\n\n  if (!res.ok) {\n    throw new Error(result?.error || `Failed to analyze documentation: ${res.status}`);\n  }\n\n  return {\n    suggestions: result.suggestions ?? [],\n    warnings: result.warnings ?? [],\n    sampleSnippet: result.sampleSnippet,\n  };\n}\n\nexport async function createApiSource(data: CreateApiSourceDto): Promise<ApiSource> {
+  const res = await fetch(`${API_BASE}/api/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Failed to create source" }));
+    throw new Error(error.error || `Failed to create API source: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export async function updateApiSource(id: string, data: Partial<CreateApiSourceDto>): Promise<ApiSource> {
+  const res = await fetch(`${API_BASE}/api/sources/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Failed to update source" }));
+    throw new Error(error.error || `Failed to update API source: ${res.status}`);
+  }
+  
+  return res.json();
+}
+
+export async function deleteApiSource(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/sources/${id}`, {
+    method: "DELETE"
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to delete API source: ${res.status}`);
+  }
+}
+
+export async function testApiConnection(id: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/sources/${id}/test-connection`, {
+    method: "POST",
+    signal: AbortSignal.timeout(15000)
+  });
+  
+  const result = await res.json().catch(() => ({ success: false, message: "Unable to parse response" }));
+  
+  if (!res.ok) {
+    throw new Error(result.message || `Test failed: ${res.status}`);
+  }
+  
+  return result;
+}
+
+export async function triggerApiIngestion(id: string): Promise<{
+  success: boolean;
+  logId: string;
+  recordsFetched: number;
+  documentsCreated: number;
+  documentsFailed: number;
+  executionTimeMs: number;
+  errorMessage?: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/sources/${id}/trigger`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30000)
+  });
+  
+  const result = await res.json().catch(() => ({ success: false, logId: "", recordsFetched: 0, documentsCreated: 0, documentsFailed: 0, executionTimeMs: 0 }));
+  
+  if (!res.ok) {
+    throw new Error(result.errorMessage || `Ingestion failed: ${res.status}`);
+  }
+  
+  return result;
+}
+
+export async function getApiIngestionLogs(sourceId: string, limit = 10): Promise<ApiIngestionLog[]> {
+  const url = new URL(`${API_BASE}/api/sources/${sourceId}/logs`);
+  url.searchParams.set("limit", String(limit));
+  
+  const res = await fetch(url, { cache: "no-store" });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to get logs: ${res.status}`);
+  }
+  
+  return res.json();
+}
+

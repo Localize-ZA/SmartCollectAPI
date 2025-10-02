@@ -16,7 +16,9 @@ import {
   FileText,
   Clock,
   AlertTriangle,
-  Globe
+  Globe,
+  Search,
+  Languages
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -80,6 +82,18 @@ const sidebarItems: SidebarItem[] = [
     title: "API Sources",
     href: "/api-sources",
     icon: Globe,
+  },
+  {
+    title: "Chunk Search",
+    href: "/search",
+    icon: Search,
+    badge: "Phase 3",
+  },
+  {
+    title: "Language Detection",
+    href: "/language",
+    icon: Languages,
+    badge: "Phase 4",
   },
 ];
 
