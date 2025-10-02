@@ -170,13 +170,19 @@ public class DocumentProcessingPipeline(
 
                     if (chunkEmbedding.Success)
                     {
+                        // Attach detected language from processing plan to chunk metadata
+                        var chunkMeta = new Dictionary<string, object>(chunk.Metadata)
+                        {
+                            ["language"] = processingPlan.Language
+                        };
+
                         chunkEmbeddings.Add(new ChunkEmbedding(
                             ChunkIndex: chunk.ChunkIndex,
                             Content: chunk.Content,
                             StartOffset: chunk.StartOffset,
                             EndOffset: chunk.EndOffset,
                             Embedding: chunkEmbedding.Embedding,
-                            Metadata: chunk.Metadata
+                            Metadata: chunkMeta
                         ));
                     }
                 }
@@ -206,7 +212,7 @@ public class DocumentProcessingPipeline(
             }
 
             // Step 7: Create canonical document
-            var canonicalDoc = CreateCanonicalDocument(job, parseResult, entityResult, embeddingResult);
+            var canonicalDoc = CreateCanonicalDocument(job, parseResult, entityResult, embeddingResult, processingPlan.Language);
 
             // Step 8: Send notification if requested
             NotificationResult? notificationResult = null;
@@ -338,7 +344,8 @@ public class DocumentProcessingPipeline(
         JobEnvelope job,
         DocumentParseResult parseResult,
         EntityExtractionResult? entityResult,
-        EmbeddingResult embeddingResult)
+        EmbeddingResult embeddingResult,
+        string? language)
     {
         var entities = new JsonArray();
         if (entityResult?.Entities != null)
@@ -387,6 +394,7 @@ public class DocumentProcessingPipeline(
             SourceUri = job.SourceUri,
             IngestTs = job.ReceivedAt,
             Mime = job.MimeType,
+            Language = string.IsNullOrWhiteSpace(language) ? "en" : language,
             Structured = isStructured,
             StructuredPayload = structuredPayload,
             ExtractedText = SanitizeText(parseResult.ExtractedText),

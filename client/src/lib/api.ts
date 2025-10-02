@@ -569,7 +569,44 @@ export async function getApiSource(id: string): Promise<ApiSource> {
   return res.json();
 }
 
-\nexport interface ApiSourceAutoFillSuggestion {\n  field: string;\n  value?: string;\n  confidence: number;\n  notes?: string;\n}\n\nexport interface ApiSourceAutoFillResult {\n  suggestions: ApiSourceAutoFillSuggestion[];\n  warnings: string[];\n  sampleSnippet?: string;\n}\n\nexport async function autoFillApiSource(docsUrl: string, notes?: string): Promise<ApiSourceAutoFillResult> {\n  const payload: Record<string, unknown> = { docsUrl };\n  if (notes) payload.notes = notes;\n\n  const res = await fetch(`${API_BASE}/api/sources/auto-fill`, {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    signal: AbortSignal.timeout(15000),\n    body: JSON.stringify(payload),\n  });\n\n  const result = await res.json().catch(() => ({ suggestions: [], warnings: [] }));\n\n  if (!res.ok) {\n    throw new Error(result?.error || `Failed to analyze documentation: ${res.status}`);\n  }\n\n  return {\n    suggestions: result.suggestions ?? [],\n    warnings: result.warnings ?? [],\n    sampleSnippet: result.sampleSnippet,\n  };\n}\n\nexport async function createApiSource(data: CreateApiSourceDto): Promise<ApiSource> {
+export interface ApiSourceAutoFillSuggestion {
+  field: string;
+  value?: string;
+  confidence: number;
+  notes?: string;
+}
+
+export interface ApiSourceAutoFillResult {
+  suggestions: ApiSourceAutoFillSuggestion[];
+  warnings: string[];
+  sampleSnippet?: string;
+}
+
+export async function autoFillApiSource(docsUrl: string, notes?: string): Promise<ApiSourceAutoFillResult> {
+  const payload: Record<string, unknown> = { docsUrl };
+  if (notes) payload.notes = notes;
+
+  const res = await fetch(`${API_BASE}/api/sources/auto-fill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(15000),
+    body: JSON.stringify(payload),
+  });
+
+  const result = await res.json().catch(() => ({ suggestions: [], warnings: [] }));
+
+  if (!res.ok) {
+    throw new Error(result?.error || `Failed to analyze documentation: ${res.status}`);
+  }
+
+  return {
+    suggestions: result.suggestions ?? [],
+    warnings: result.warnings ?? [],
+    sampleSnippet: result.sampleSnippet,
+  };
+}
+
+export async function createApiSource(data: CreateApiSourceDto): Promise<ApiSource> {
   const res = await fetch(`${API_BASE}/api/sources`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

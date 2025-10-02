@@ -66,6 +66,15 @@ public class ApiIngestionLog
     [Column("total_pages")]
     public int? TotalPages { get; set; }
 
+    [Column("pagination_time_ms")]
+    public long? PaginationTimeMs { get; set; }
+
+    [Column("max_pages_reached")]
+    public bool MaxPagesReached { get; set; } = false;
+
+    [Column("pagination_metrics", TypeName = "jsonb")]
+    public string? PaginationMetrics { get; set; } // Stored as JSON string
+
     // Additional Context
     [Column("metadata", TypeName = "jsonb")]
     public string? Metadata { get; set; } // Stored as JSON string

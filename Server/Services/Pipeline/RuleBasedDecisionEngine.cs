@@ -1,4 +1,5 @@
 using SmartCollectAPI.Models;
+using SmartCollectAPI.Services;
 using System.Text.RegularExpressions;
 
 namespace SmartCollectAPI.Services.Pipeline;
@@ -7,9 +8,10 @@ namespace SmartCollectAPI.Services.Pipeline;
 /// Rule-based implementation of IDecisionEngine.
 /// Uses heuristics and rules to determine optimal processing strategies.
 /// </summary>
-public partial class RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> logger) : IDecisionEngine
+public partial class RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> logger, ILanguageDetectionService languageDetectionService) : IDecisionEngine
 {
     private readonly ILogger<RuleBasedDecisionEngine> _logger = logger;
+    private readonly ILanguageDetectionService _languageDetectionService = languageDetectionService;
 
     public async Task<PipelinePlan> GeneratePlanAsync(
         string fileName,
@@ -60,9 +62,9 @@ public partial class RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> lo
         // Rule 7: Estimate processing cost
         plan.EstimatedCost = EstimateProcessingCost(plan);
 
-        // Rule 8: Detect language (basic heuristic for now)
-        plan.Language = DetectLanguage(contentPreview);
-        if (plan.Language != "en")
+        // Rule 8: Detect language (use microservice if available; fall back to heuristic)
+        plan.Language = await DetectLanguageWithFallbackAsync(contentPreview);
+        if (!string.Equals(plan.Language, "en", StringComparison.OrdinalIgnoreCase))
         {
             plan.DecisionReasons.Add($"Language detected: {plan.Language}");
         }
@@ -258,27 +260,51 @@ public partial class RuleBasedDecisionEngine(ILogger<RuleBasedDecisionEngine> lo
         return cost;
     }
 
-    private static string DetectLanguage(string? contentPreview)
+    private async Task<string> DetectLanguageWithFallbackAsync(string? contentPreview)
     {
-        if (string.IsNullOrEmpty(contentPreview)) return "en";
+        if (string.IsNullOrWhiteSpace(contentPreview)) return "en";
 
-        // Very basic heuristic language detection
-        // TODO: Replace with proper language detection service in Phase 2
+        try
+        {
+            var detection = await _languageDetectionService.DetectLanguageAsync(contentPreview, 0.0f);
+            // Prefer ISO 639-1 if available
+            if (!string.IsNullOrWhiteSpace(detection.IsoCode639_1))
+            {
+                return detection.IsoCode639_1.ToLowerInvariant();
+            }
 
-        // Check for common non-English characters
-        if (MyRegex().IsMatch(contentPreview)) return "zh"; // Chinese
-        if (Regex.IsMatch(contentPreview, @"[\u0400-\u04FF]")) return "ru"; // Russian
-        if (Regex.IsMatch(contentPreview, @"[\u0600-\u06FF]")) return "ar"; // Arabic
-        if (Regex.IsMatch(contentPreview, @"[\u3040-\u309F]")) return "ja"; // Japanese hiragana
-        if (Regex.IsMatch(contentPreview, @"[\uAC00-\uD7AF]")) return "ko"; // Korean
+            // Fallback: map common language names to codes
+            return detection.LanguageName.ToLowerInvariant() switch
+            {
+                "english" => "en",
+                "spanish" => "es",
+                "french" => "fr",
+                "german" => "de",
+                "italian" => "it",
+                "russian" => "ru",
+                "chinese" => "zh",
+                "japanese" => "ja",
+                "korean" => "ko",
+                "arabic" => "ar",
+                _ => "en"
+            };
+        }
+        catch
+        {
+            // Microservice unavailable: fall back to basic heuristic
+            if (MyRegex().IsMatch(contentPreview)) return "zh"; // Chinese
+            if (Regex.IsMatch(contentPreview, @"[\u0400-\u04FF]")) return "ru"; // Russian
+            if (Regex.IsMatch(contentPreview, @"[\u0600-\u06FF]")) return "ar"; // Arabic
+            if (Regex.IsMatch(contentPreview, @"[\u3040-\u309F]")) return "ja"; // Japanese hiragana
+            if (Regex.IsMatch(contentPreview, @"[\uAC00-\uD7AF]")) return "ko"; // Korean
 
-        // Check for common non-English words (very basic)
-        var lowerContent = contentPreview.ToLower();
-        if (lowerContent.Contains("el ") || lowerContent.Contains("la ") || lowerContent.Contains("los ")) return "es";
-        if (lowerContent.Contains("le ") || lowerContent.Contains("la ") || lowerContent.Contains("les ")) return "fr";
-        if (lowerContent.Contains("der ") || lowerContent.Contains("die ") || lowerContent.Contains("das ")) return "de";
+            var lowerContent = contentPreview.ToLowerInvariant();
+            if (lowerContent.Contains(" el ") || lowerContent.StartsWith("el ") || lowerContent.Contains(" la ") || lowerContent.Contains(" los ")) return "es";
+            if (lowerContent.Contains(" le ") || lowerContent.StartsWith("le ") || lowerContent.Contains(" les ")) return "fr";
+            if (lowerContent.Contains(" der ") || lowerContent.Contains(" die ") || lowerContent.Contains(" das ")) return "de";
 
-        return "en"; // Default to English
+            return "en";
+        }
     }
 
     [GeneratedRegex(@"[\u4E00-\u9FFF]")]

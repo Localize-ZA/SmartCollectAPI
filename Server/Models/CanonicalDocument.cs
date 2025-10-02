@@ -8,6 +8,7 @@ public class CanonicalDocument
     public string SourceUri { get; set; } = string.Empty;
     public DateTimeOffset IngestTs { get; set; } = DateTimeOffset.UtcNow;
     public string Mime { get; set; } = "application/octet-stream";
+    public string? Language { get; set; } = "en";
     public bool Structured { get; set; }
     public JsonNode? StructuredPayload { get; set; }
     public string? ExtractedText { get; set; }

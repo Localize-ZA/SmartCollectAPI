@@ -117,6 +117,53 @@ public class ApiSource
     [Column("consecutive_failures")]
     public int ConsecutiveFailures { get; set; } = 0;
 
+    [Column("last_successful_run_at")]
+    public DateTime? LastSuccessfulRunAt { get; set; }
+
+    [Column("total_runs_count")]
+    public int TotalRunsCount { get; set; } = 0;
+
+    // Rate Limiting
+    [Column("rate_limit_per_minute")]
+    public int? RateLimitPerMinute { get; set; } = 60;
+
+    [Column("rate_limit_per_hour")]
+    public int? RateLimitPerHour { get; set; }
+
+    // Incremental Sync
+    [Column("last_synced_at")]
+    public DateTime? LastSyncedAt { get; set; }
+
+    [MaxLength(255)]
+    [Column("last_synced_record_id")]
+    public string? LastSyncedRecordId { get; set; }
+
+    [Column("incremental_sync_enabled")]
+    public bool IncrementalSyncEnabled { get; set; } = false;
+
+    [MaxLength(100)]
+    [Column("timestamp_field")]
+    public string? TimestampField { get; set; } // Field name for incremental sync (e.g., "updated_at")
+
+    // GraphQL Support
+    [Column("graphql_query")]
+    public string? GraphQLQuery { get; set; }
+
+    [Column("graphql_variables", TypeName = "jsonb")]
+    public string? GraphQLVariables { get; set; }
+
+    // Webhook Support
+    [Column("webhook_secret_encrypted")]
+    public string? WebhookSecretEncrypted { get; set; }
+
+    [MaxLength(100)]
+    [Column("webhook_signature_header")]
+    public string? WebhookSignatureHeader { get; set; } // e.g., "X-Hub-Signature-256"
+
+    [MaxLength(50)]
+    [Column("webhook_signature_method")]
+    public string? WebhookSignatureMethod { get; set; } // e.g., "HMAC-SHA256"
+
     // Metadata
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

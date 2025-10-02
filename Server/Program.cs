@@ -186,8 +186,12 @@ namespace SmartCollectAPI
                 builder.Services.AddScoped<IApiSourceDocsAnalyzer, ApiSourceDocsAnalyzer>();
                 builder.Services.AddDataProtection(); // For encrypting general auth credentials (legacy/general)
                 builder.Services.AddSingleton<SmartCollectAPI.Services.ISecretCryptoService, SmartCollectAPI.Services.SecretCryptoService>();
+                
+                // API Ingestion Services (Phase 1 Days 6-7: GraphQL Support)
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IAuthenticationManager, SmartCollectAPI.Services.ApiIngestion.AuthenticationManager>();
-                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClient, SmartCollectAPI.Services.ApiIngestion.RestApiClient>();
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.RestApiClient>(); // Concrete REST client
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.GraphQLClient>(); // Concrete GraphQL client
+                builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiClientFactory, SmartCollectAPI.Services.ApiIngestion.ApiClientFactory>(); // Factory to select client
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IDataTransformer, SmartCollectAPI.Services.ApiIngestion.DataTransformer>();
                 builder.Services.AddScoped<SmartCollectAPI.Services.ApiIngestion.IApiIngestionService, SmartCollectAPI.Services.ApiIngestion.ApiIngestionService>();
 
@@ -196,6 +200,11 @@ namespace SmartCollectAPI
 
                 // Register Chunk Search Service (Phase 3)
                 builder.Services.AddScoped<SmartCollectAPI.Services.IChunkSearchService, SmartCollectAPI.Services.ChunkSearchService>();
+
+                // Register API Ingestion Scheduler (Phase 1 - Production MVP)
+                builder.Services.Configure<SmartCollectAPI.Services.ApiIngestion.ApiIngestionSchedulerOptions>(
+                    builder.Configuration.GetSection("ApiIngestionScheduler"));
+                builder.Services.AddHostedService<SmartCollectAPI.Services.ApiIngestion.ApiIngestionScheduler>();
 
                 // Register background workers
                 builder.Services.AddHostedService<SmartCollectAPI.Services.IngestWorker>();
